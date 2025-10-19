@@ -39,4 +39,4 @@ APP_TITLE = "My Game Library"
 # game to be present on ALL selected platforms (AND). When False, selecting
 # multiple platforms will show games that are present on ANY selected
 # platforms (OR). This can be overridden later via a user setting.
-PLATFORM_FILTER_AND = False
+PLATFORM_FILTER_AND = True
