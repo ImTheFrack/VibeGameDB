@@ -350,6 +350,32 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Help tooltip overflow handling: flip to left if tooltip would overflow the viewport
+    document.querySelectorAll('.help-icon').forEach(h => {
+        const tip = h.querySelector('.help-tooltip');
+        if (!tip) return;
+
+        const computeAndFlip = () => {
+            // Temporarily show the tooltip to compute size
+            const prevDisplay = tip.style.display;
+            tip.style.display = 'block';
+            const rect = tip.getBoundingClientRect();
+            tip.style.display = prevDisplay || '';
+
+            // If tooltip right edge would be off-screen, flip it to the left
+            if (rect.right > (window.innerWidth - 8)) {
+                h.classList.add('tooltip-left');
+            } else {
+                h.classList.remove('tooltip-left');
+            }
+        };
+
+        h.addEventListener('mouseenter', computeAndFlip);
+        h.addEventListener('focus', computeAndFlip);
+        // Recompute on window resize
+        window.addEventListener('resize', computeAndFlip);
+    });
+
     // Filter form submission
     if (formFilter) {
         formFilter.addEventListener('submit', async (e) => {
