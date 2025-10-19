@@ -120,8 +120,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert(`Error: ${err.error || 'Failed to save game'}`);
                 return;
             }
-            closeModal(modalGame);
-            if (currentTab === 'games') fetchGames();  // Only refresh if on Games tab
+            closeModal(modalPlatform);
+            await populatePlatformFilters();  // Refresh filter buttons (always)
+            if (currentTab === 'platforms') fetchPlatforms();  // Only refresh grid if on Platforms tab
         } catch (err) {
             console.error('Form submission error:', err);
             alert('Network error: ' + err.message);
@@ -157,12 +158,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             closeModal(modalPlatform);
-<<<<<<< HEAD
-            if (currentTab === 'platforms') fetchPlatforms();  // Only refresh if on Platforms tab
-=======
-            await populatePlatformFilters();  // Refresh filter buttons
-            fetchPlatforms();
->>>>>>> ccbe2fe847b7f1081a024ca190d8d8c2d24cfb32
+            await populatePlatformFilters();  // Refresh filter buttons (always)
+            if (currentTab === 'platforms') fetchPlatforms();  // Only refresh grid if on Platforms tab
         } catch (err) {
             console.error('Form submission error:', err);
             alert('Network error: ' + err.message);
