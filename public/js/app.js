@@ -301,10 +301,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const target = e.currentTarget.getAttribute('data-tab');
             console.log('Switching tab to', target);
             currentTab = target;  // Track current tab
-            tabs.forEach(t => {
-                t.classList.toggle('active', t === tab);
-                t.setAttribute('aria-selected', t === tab ? 'true' : 'false');
-            });
+            tabs.forEach(t => t.classList.toggle('active', t === tab));
             
             // Show/hide filter button based on tab
             if (gamesControls) {
@@ -434,10 +431,10 @@ document.addEventListener('DOMContentLoaded', () => {
         tabs[0].setAttribute('aria-selected', 'true');
         gamesControls.style.display = 'flex';
         
-        // Now load the games
-        console.log('Initial load: fetching games...');
-        await fetchGames();
-        console.log('Initial load: games fetched and rendered');
+    // Now load the games and wait for rendering to complete
+    await fetchGames();
+    // Ensure active filters are applied and grid is rendered
+    applyFilters();
     })();
 });
 
