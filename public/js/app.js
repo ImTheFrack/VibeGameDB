@@ -421,6 +421,16 @@ document.addEventListener('DOMContentLoaded', () => {
             allPlatforms = platformData.platforms || [];
         }
         
+        // Ensure we're on the Games tab and load the games
+        currentTab = 'games';
+        tabs.forEach(tab => {
+            tab.classList.remove('active');
+            tab.setAttribute('aria-selected', 'false');
+        });
+        tabs[0].classList.add('active');
+        tabs[0].setAttribute('aria-selected', 'true');
+        gamesControls.style.display = 'flex';
+        
         // Now load the games
         fetchGames();
     })();
