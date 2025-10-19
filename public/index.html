@@ -132,26 +132,26 @@
                 <button class="modal-close" data-close>&times;</button>
             </header>
             <form id="form-add-to-platform" class="modal-form">
-                <label>Platform
-                    <select name="platform_id" required>
-                        <!-- JS will populate platform options -->
-                    </select>
-                </label>
-                <fieldset>
-                    <legend>Format</legend>
-                    <label><input type="radio" name="is_digital" value="true" required> Digital</label>
-                    <label><input type="radio" name="is_digital" value="false"> Physical</label>
-                </fieldset>
-                <label>Acquisition Method
-                    <select name="acquisition_method">
-                        <option value="">-- Select --</option>
-                        <option value="bought">Bought</option>
-                        <option value="free">Free</option>
-                        <option value="bundle">Bundle</option>
-                        <option value="gift">Gift</option>
-                        <option value="subscription">Subscription</option>
-                    </select>
-                </label>
+                <div class="inline-radios">
+                    <span>Platform:</span>
+                    <div id="platform-radio-group">
+                        <!-- JS will populate platform radio options -->
+                    </div>
+                </div>
+                <div id="format-section" class="inline-checkboxes">
+                    <span>Format:</span>
+                    <div id="format-checkbox-group">
+                        <!-- JS will populate format checkboxes based on platform support -->
+                    </div>
+                </div>
+                <div class="inline-radios">
+                    <span>Acquired:</span>
+                    <label><input type="radio" name="acquisition_method" value="bought" checked> Bought</label>
+                    <label><input type="radio" name="acquisition_method" value="free"> Free</label>
+                    <label><input type="radio" name="acquisition_method" value="bundle"> Bundle</label>
+                    <label><input type="radio" name="acquisition_method" value="gift"> Gift</label>
+                    <label><input type="radio" name="acquisition_method" value="subscription"> Sub</label>
+                </div>
                 <div class="modal-actions">
                     <button type="submit" class="btn btn-primary">Add</button>
                     <button type="button" class="btn" data-close>Cancel</button>

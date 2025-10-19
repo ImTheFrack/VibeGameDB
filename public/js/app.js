@@ -125,9 +125,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             const result = await res.json();
-            closeModal(modalGame);
-            await populatePlatformFilters();
-            if (currentTab === 'games') fetchGames();
+            
+            // If creating a new game (not editing), automatically open "Add to Platform" modal
+            if (!gameId) {
+                currentGameId = result.game.id;
+                closeModal(modalGame);
+                await populateAddToPlatformForm();
+                openModal(modalAddToPlatform);
+            } else {
+                closeModal(modalGame);
+                await populatePlatformFilters();
+                if (currentTab === 'games') fetchGames();
+            }
         } catch (err) {
             console.error('Form submission error:', err);
             alert('Network error: ' + err.message);
@@ -185,25 +194,54 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         const formData = new FormData(formAddToPlatform);
 
-        const gamePlatformData = {
-            game_id: currentGameId,
-            platform_id: formData.get('platform_id'),
-            is_digital: formData.get('is_digital') === 'true',
-            acquisition_method: formData.get('acquisition_method') || null
-        };
+        const platformId = formData.get('platform_id');
+        const acquisitionMethod = formData.get('acquisition_method') || null;
+        
+        // Get selected formats from checkboxes
+        const digitalCheckbox = document.querySelector('input[name="format_digital"]:checked');
+        const physicalCheckbox = document.querySelector('input[name="format_physical"]:checked');
+        
+        // Also check for disabled checkboxes (single format platforms)
+        const allFormatCheckboxes = document.querySelectorAll('#format-checkbox-group input[type="checkbox"]');
+        const selectedFormats = [];
+        
+        allFormatCheckboxes.forEach(cb => {
+            if (cb.checked || cb.disabled) {
+                selectedFormats.push(cb.value === 'true');
+            }
+        });
+        
+        if (selectedFormats.length === 0) {
+            alert('Please select at least one format (Digital or Physical)');
+            return;
+        }
 
-        try {
-            const res = await fetch('/plugins/database_handler/game_platforms', {
+        // Create a game_platform entry for each selected format
+        const requests = selectedFormats.map(isDigital => {
+            const gamePlatformData = {
+                game_id: currentGameId,
+                platform_id: platformId,
+                is_digital: isDigital,
+                acquisition_method: acquisitionMethod
+            };
+            return fetch('/plugins/database_handler/game_platforms', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(gamePlatformData)
             });
-            if (!res.ok) {
-                const err = await res.json();
-                alert(`Error: ${err.error || 'Failed to add game to platform'}`);
-                return;
+        });
+
+        try {
+            const responses = await Promise.all(requests);
+            for (const res of responses) {
+                if (!res.ok) {
+                    const err = await res.json();
+                    alert(`Error: ${err.error || 'Failed to add game to platform'}`);
+                    return;
+                }
             }
             closeModal(modalAddToPlatform);
+            await populatePlatformFilters();
             if (currentTab === 'games') fetchGames();
         } catch (err) {
             console.error('Form submission error:', err);
@@ -369,17 +407,87 @@ async function populateAddToPlatformForm() {
     const data = await apiGet('/plugins/database_handler/platforms');
     if (!data) return;
     
-    const platformSelect = document.querySelector('#form-add-to-platform select[name="platform_id"]');
-    if (!platformSelect) return;
+    const platformGroup = document.getElementById('platform-radio-group');
+    if (!platformGroup) return;
     
-    platformSelect.innerHTML = '<option value="">-- Select a platform --</option>';
+    platformGroup.innerHTML = '';
     const platforms = data.platforms || [];
-    platforms.forEach(p => {
-        const option = document.createElement('option');
-        option.value = p.id;
-        option.textContent = p.name;
-        platformSelect.appendChild(option);
+    
+    platforms.forEach((p, idx) => {
+        const label = document.createElement('label');
+        const input = document.createElement('input');
+        input.type = 'radio';
+        input.name = 'platform_id';
+        input.value = p.id;
+        input.required = true;
+        if (idx === 0) input.checked = true;
+        
+        label.appendChild(input);
+        label.appendChild(document.createTextNode(p.name));
+        platformGroup.appendChild(label);
+        
+        // Add change listener to update format options when platform changes
+        input.addEventListener('change', () => updateFormatOptions(p));
     });
+    
+    // Set initial format options for first platform
+    if (platforms.length > 0) {
+        updateFormatOptions(platforms[0]);
+    }
+}
+
+// Update format checkboxes based on selected platform's capabilities
+function updateFormatOptions(platform) {
+    const formatGroup = document.getElementById('format-checkbox-group');
+    if (!formatGroup) return;
+    
+    formatGroup.innerHTML = '';
+    
+    // If platform supports both, show both checkboxes
+    if (platform.supports_digital && platform.supports_physical) {
+        const digitalLabel = document.createElement('label');
+        const digitalInput = document.createElement('input');
+        digitalInput.type = 'checkbox';
+        digitalInput.name = 'format_digital';
+        digitalInput.value = 'true';
+        digitalInput.checked = true;
+        digitalLabel.appendChild(digitalInput);
+        digitalLabel.appendChild(document.createTextNode('Digital'));
+        formatGroup.appendChild(digitalLabel);
+        
+        const physicalLabel = document.createElement('label');
+        const physicalInput = document.createElement('input');
+        physicalInput.type = 'checkbox';
+        physicalInput.name = 'format_physical';
+        physicalInput.value = 'true';
+        physicalLabel.appendChild(physicalInput);
+        physicalLabel.appendChild(document.createTextNode('Physical'));
+        formatGroup.appendChild(physicalLabel);
+    } 
+    // If only digital
+    else if (platform.supports_digital) {
+        const label = document.createElement('label');
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.value = 'true';
+        input.checked = true;
+        input.disabled = true;
+        label.appendChild(input);
+        label.appendChild(document.createTextNode('Digital'));
+        formatGroup.appendChild(label);
+    }
+    // If only physical
+    else if (platform.supports_physical) {
+        const label = document.createElement('label');
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.value = 'false';
+        input.checked = true;
+        input.disabled = true;
+        label.appendChild(input);
+        label.appendChild(document.createTextNode('Physical'));
+        formatGroup.appendChild(label);
+    }
 }
 
 // ----------------------

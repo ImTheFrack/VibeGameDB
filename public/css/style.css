@@ -67,10 +67,15 @@ body{
 .modal-form{display:grid;gap:10px;margin-top:12px}
 .modal-form label{display:block;color:var(--text)}
 .modal-form input,.modal-form textarea,.modal-form select{width:100%;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:var(--text)}
-.inline-checkboxes{display:flex;align-items:center;gap:12px;padding:8px 0}
+.inline-checkboxes{display:flex;align-items:center;gap:12px;padding:8px 0;flex-wrap:wrap}
 .inline-checkboxes span{color:var(--text);font-weight:500}
 .inline-checkboxes label{display:inline-flex;align-items:center;gap:6px;margin:0}
 .inline-checkboxes input[type="checkbox"]{width:auto;padding:0;margin:0}
+.inline-radios{display:flex;align-items:center;gap:12px;padding:8px 0;flex-wrap:wrap}
+.inline-radios span{color:var(--text);font-weight:500}
+.inline-radios label{display:inline-flex;align-items:center;gap:6px;margin:0}
+.inline-radios input[type="radio"]{width:auto;padding:0;margin:0}
+#platform-radio-group,#format-checkbox-group{display:flex;gap:12px;flex-wrap:wrap}
 .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
 
 /* Small screens */
