@@ -43,6 +43,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const formFilter = document.getElementById('form-filter');
     const btnFilter = document.getElementById('btn-filter');
     const gamesControls = document.getElementById('games-controls');
+    // Some older layouts used a header platform filters container. Prefer that
+    // if present, otherwise fall back to the filter modal container. Use a
+    // detached div as a harmless fallback so callers can safely query it.
+    const platformFiltersContainer = document.querySelector('.platform-filters')
+        || document.getElementById('filter-platforms')
+        || document.createElement('div');
 
     // ----------------------
     // Modal Management
@@ -435,18 +441,7 @@ document.addEventListener('DOMContentLoaded', () => {
     await fetchGames();
     // Ensure active filters are applied and grid is rendered
     applyFilters();
-        // As a defensive measure trigger a click on the Games tab so any
-        // tab-click side-effects (class toggles, UI visibility) run exactly
-        // the same as a user interaction. This fixes a race where the grid
-        // isn't visible until the tab is manually clicked.
-        if (tabs && tabs.length > 0) {
-            try {
-                tabs[0].dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-            } catch (e) {
-                // Fallback to calling the handler indirectly
-                tabs[0].click();
-            }
-        }
+
     })();
 });
 
