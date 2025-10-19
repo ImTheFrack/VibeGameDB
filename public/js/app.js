@@ -353,15 +353,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const formDisplay = document.getElementById('form-display');
     function updateDisplayButton() {
         if (!btnDisplay) return;
-        // Count how many display options are OFF (hidden)
-        const opts = Object.keys(displayOptions);
-        const hiddenCount = opts.reduce((acc, k) => acc + (displayOptions[k] ? 0 : 1), 0);
+        // Exclude title from the count since it is always shown
+        const keys = ['show_cover', 'show_description', 'show_tags', 'show_platforms'];
+        const hiddenCount = keys.reduce((acc, k) => acc + (displayOptions[k] ? 0 : 1), 0);
         if (hiddenCount > 0) {
             btnDisplay.textContent = `🖼 Display (${hiddenCount})`;
-            btnDisplay.classList.add('display-options-on');
+            // Use same visual class as Filter when active
+            btnDisplay.classList.add('filters-on');
         } else {
             btnDisplay.textContent = '🖼 Display';
-            btnDisplay.classList.remove('display-options-on');
+            btnDisplay.classList.remove('filters-on');
         }
     }
     if (btnDisplay && modalDisplayEl && formDisplay) {
@@ -377,9 +378,9 @@ document.addEventListener('DOMContentLoaded', () => {
         formDisplay.addEventListener('submit', (e) => {
             e.preventDefault();
             const formData = new FormData(formDisplay);
-            // Update displayOptions and rerender
+            // Update displayOptions and rerender. Title is always shown.
             displayOptions.show_cover = !!formData.get('show_cover');
-            displayOptions.show_title = !!formData.get('show_title');
+            displayOptions.show_title = true; // enforced
             displayOptions.show_description = !!formData.get('show_description');
             displayOptions.show_tags = !!formData.get('show_tags');
             displayOptions.show_platforms = !!formData.get('show_platforms');
