@@ -7,6 +7,13 @@
     All functions are commented with intent and future extension points.
 */
 
+// ----------------------
+// Global State
+// ----------------------
+let currentPlatformFilter = 'all';  // Currently selected filter
+let allGames = [];                  // All games from database
+let currentTab = 'games';           // Currently active tab
+
 // Ensure DOM is ready before running any code that touches elements.
 document.addEventListener('DOMContentLoaded', () => {
     // Cache frequently used elements
@@ -114,7 +121,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             closeModal(modalGame);
-            fetchGames();
+            if (currentTab === 'games') fetchGames();  // Only refresh if on Games tab
         } catch (err) {
             console.error('Form submission error:', err);
             alert('Network error: ' + err.message);
@@ -150,8 +157,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             closeModal(modalPlatform);
+<<<<<<< HEAD
+            if (currentTab === 'platforms') fetchPlatforms();  // Only refresh if on Platforms tab
+=======
             await populatePlatformFilters();  // Refresh filter buttons
             fetchPlatforms();
+>>>>>>> ccbe2fe847b7f1081a024ca190d8d8c2d24cfb32
         } catch (err) {
             console.error('Form submission error:', err);
             alert('Network error: ' + err.message);
@@ -163,6 +174,7 @@ document.addEventListener('DOMContentLoaded', () => {
         tab.addEventListener('click', (e) => {
             const target = e.currentTarget.getAttribute('data-tab');
             console.log('Switching tab to', target);
+            currentTab = target;  // Track current tab
             tabs.forEach(t => t.classList.toggle('active', t === tab));
             // TODO: call fetchGames() or fetchPlatforms() depending on target
             if (target === 'games') fetchGames(); else fetchPlatforms();
@@ -224,6 +236,60 @@ async function fetchGames() {
 async function fetchPlatforms() {
     const data = await apiGet('/plugins/database_handler/platforms');
     if (data) renderPlatforms(data.platforms || []);
+}
+
+// Populate platform filter buttons from database
+async function populatePlatformFilters() {
+    const data = await apiGet('/plugins/database_handler/platforms');
+    if (!data) return;
+    
+    const platformFiltersContainer = document.querySelector('.platform-filters');
+    if (!platformFiltersContainer) return;
+    
+    // Clear existing buttons except "All"
+    const existingButtons = platformFiltersContainer.querySelectorAll('.filter-btn');
+    existingButtons.forEach(btn => {
+        if (btn.getAttribute('data-platform') !== 'all') {
+            btn.remove();
+        }
+    });
+    
+    // Add buttons for each platform
+    const platforms = data.platforms || [];
+    platforms.forEach(p => {
+        const btn = document.createElement('button');
+        btn.className = 'filter-btn';
+        btn.setAttribute('data-platform', p.id || p.name);
+        btn.textContent = p.name;
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            filterGamesByPlatform(p.id || p.name);
+        });
+        platformFiltersContainer.appendChild(btn);
+    });
+}
+
+// Filter games by selected platform
+function filterGamesByPlatform(platformId) {
+    currentPlatformFilter = platformId;
+    
+    // Update active button
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-platform') === platformId);
+    });
+    
+    // Filter and re-render games
+    if (platformId === 'all') {
+        renderGames(allGames);
+    } else {
+        const filtered = allGames.filter(game => {
+            const gamePlatforms = game.platforms || [];
+            return gamePlatforms.some(p => 
+                (typeof p === 'string' ? p : p.id || p.name) === platformId
+            );
+        });
+        renderGames(filtered);
+    }
 }
 
 // Fetch platforms and populate the dropdown in the game form
