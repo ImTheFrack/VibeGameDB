@@ -19,18 +19,51 @@ This repository contains a small Python stdlib HTTP server (`main.py`) which ser
 - `config.py` — central configuration (AI endpoint, DB path, app title)
 - `data/` — empty directory placeholder for future DB files
 
-## Quick start (PowerShell)
-From the repository root run:
+## Quick start
+
+The instructions below show how to create a virtual environment (recommended), activate it, and run the server on both Linux (Ubuntu / bash) and Windows (PowerShell).
+
+### Using a Python virtual environment (recommended)
+
+Bash / Ubuntu:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+# Optionally install dev deps here if added later
+```
+
+PowerShell (Windows):
+
+```powershell
+python -m venv .venv
+# In PowerShell
+.\.venv\Scripts\Activate.ps1
+# If execution policy prevents running scripts, you can use:
+# . .\.venv\Scripts\activate (Cmd-style) or run PowerShell as admin and allow the script
+python -m pip install --upgrade pip
+```
+
+### Run the server
+
+Bash / Ubuntu (inline env vars):
+
+```bash
+HOST=0.0.0.0 PORT=5000 DOC_ROOT=$(pwd)/public python main.py
+```
+
+PowerShell (set environment variables then run):
 
 ```powershell
 $env:HOST = '0.0.0.0'
 $env:PORT = '5000'
-# Optional: serve a different doc root
+# Optional: where static files live
 $env:DOC_ROOT = (Resolve-Path .\public).Path
 python .\main.py
 ```
 
-Open your browser at http://localhost:5000/ to see the SPA shell.
+(Notes: `main.py` uses `ThreadingHTTPServer` and reads `HOST`/`PORT` from env in `__main__`. `run()` default port is 8000; `__main__` default is 5000.)
 
 ## Useful endpoints / smoke tests
 - `GET /health` -> JSON `{"status":"ok"}`
@@ -38,7 +71,17 @@ Open your browser at http://localhost:5000/ to see the SPA shell.
 - `GET /plugins/database_handler/games` -> sample games JSON: `{"games": [...]}`
 - `GET /plugins/database_handler/platforms` -> sample platforms JSON: `{"platforms": [...]}`
 
-Sample PowerShell curl commands:
+### Example curl commands
+
+Bash / Ubuntu:
+
+```bash
+curl http://localhost:5000/health
+curl http://localhost:5000/plugins/database_handler/games
+curl http://localhost:5000/plugins/database_handler/platforms
+```
+
+PowerShell:
 
 ```powershell
 curl http://localhost:5000/health

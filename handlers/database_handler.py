@@ -1,101 +1,230 @@
 """
-Database handler plugin stub.
+SQLite-backed database handler.
 
-This module implements a `handle(req)` function that the main server's plugin
-loader will call. For now it returns static sample data for `/games` and
-`/platforms` subpaths. The goal is to provide predictable responses that the
-frontend can fetch while the real database layer is implemented later.
+This implements basic CRUD operations for games and read for platforms.
+It stores data in a SQLite file configured by `config.DATABASE_FILE`.
 
-Coding rules followed:
-- No hardcoded endpoints in other modules: values that may change should be
-  placed in `config.py` (see use of APP_TITLE below as an example import).
-- Heavily commented to explain the why and the return format expected by the
-  server loader in `main.py`.
+Design notes and contract:
+- Exposes subpaths under `/plugins/database_handler/<resource>` where
+  `<resource>` is one of: `games`, `platforms`.
+- Supported methods for `games`:
+    - GET /games -> list of games (supports optional ?id=<int> to fetch a single game)
+    - POST /games -> create a game (JSON body)
+    - PUT /games/<id> -> update a game (JSON body)
+    - DELETE /games/<id> -> delete a game
+- The handler uses simple JSON shapes and returns `(status, dict)` or `dict` for 200 responses.
+
+Security and concurrency:
+- The server is threaded (`ThreadingHTTPServer`); sqlite3 connections are created per-call which is safe for this small app.
+- Inputs are minimally validated; production code should harden validation and authentication.
+
+All mutable configuration values live in `config.py` (per project rules).
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional, List
+import sqlite3
 import json
+import os
 
 try:
-    # Import configuration so future code uses centralized values.
     import config
 except Exception:
-    # Fail-safe: allow operation even if config isn't present during early dev.
-    config = None
+    # If config is missing, fall back to sensible defaults
+    class _C:
+        DATABASE_FILE = os.path.join('data', 'gamedb.sqlite')
+        APP_TITLE = 'My Game Library'
+    config = _C()
 
 
-# Replace cover/icon URLs to local placeholders and wrap returned lists in dicts
+DB_SCHEMA = """
+PRAGMA foreign_keys = ON;
+CREATE TABLE IF NOT EXISTS games (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT,
+    cover_image_url TEXT,
+    trailer_url TEXT,
+    platforms TEXT -- JSON array of platform ids/names
+);
 
-def _sample_games():
-    """Return a small list of sample game dicts used by the frontend while
-    the real DB layer is implemented.
+CREATE TABLE IF NOT EXISTS platforms (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    type TEXT,
+    icon_url TEXT
+);
+"""
+
+
+def _get_conn(db_path: Optional[str] = None):
+    """Return a new SQLite connection for the configured DB path.
+
+    We create connections per request to avoid sharing connections across
+    threads. Caller is responsible for closing the connection.
     """
-    return [
-        {
-            "id": 1,
-            "name": "Cyberpunk 2077",
-            "description": "A story-driven, open world RPG set in Night City.",
-            # Use a local placeholder image so the app works offline / without
-            # depending on external placeholder services which can fail.
-            "cover_image_url": "/img/cover_placeholder.svg",
-            "platforms": ["Steam", "GOG"]
-        },
-        {
-            "id": 2,
-            "name": "Hades",
-            "description": "A rogue-like dungeon crawler with fast-paced combat.",
-            "cover_image_url": "/img/cover_placeholder.svg",
-            "platforms": ["Steam", "Switch"]
-        }
-    ]
+    path = db_path or getattr(config, 'DATABASE_FILE', os.path.join('data', 'gamedb.sqlite'))
+    # Ensure parent directory exists
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    conn = sqlite3.connect(path, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
-def _sample_platforms():
-    """Return a few sample platform objects.
+def _ensure_schema(conn: sqlite3.Connection):
+    cur = conn.executescript(DB_SCHEMA)
+    conn.commit()
 
-    The `id` field is a slug-like identifier; `name` is human-facing. Future
-    DB schema may include unique integer IDs, but slugs are convenient for
-    example data and URLs.
-    """
-    return [
-        {"id": "steam", "name": "Steam", "type": "Digital", "icon_url": "/img/icon_placeholder.svg", "count": 52},
-        {"id": "switch", "name": "Nintendo Switch", "type": "Physical/Digital", "icon_url": "/img/icon_placeholder.svg", "count": 18},
-    ]
+
+def _game_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
+    return {
+        'id': row['id'],
+        'name': row['name'],
+        'description': row['description'],
+        'cover_image_url': row['cover_image_url'],
+        'trailer_url': row['trailer_url'],
+        'platforms': json.loads(row['platforms']) if row['platforms'] else []
+    }
+
+
+def _platform_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
+    return {
+        'id': row['id'],
+        'name': row['name'],
+        'type': row['type'],
+        'icon_url': row['icon_url']
+    }
+
+
+def _list_games(conn: sqlite3.Connection, qparams: Dict[str, List[str]]):
+    cur = conn.cursor()
+    if 'id' in qparams and qparams['id']:
+        try:
+            gid = int(qparams['id'][0])
+        except Exception:
+            return (400, {'error': 'invalid id'})
+        cur.execute('SELECT * FROM games WHERE id = ?', (gid,))
+        row = cur.fetchone()
+        if not row:
+            return (404, {'error': 'not found'})
+        return {'game': _game_row_to_dict(row)}
+
+    cur.execute('SELECT * FROM games ORDER BY name COLLATE NOCASE')
+    rows = cur.fetchall()
+    return {'games': [_game_row_to_dict(r) for r in rows]}
+
+
+def _create_game(conn: sqlite3.Connection, data: Dict[str, Any]):
+    # Basic validation
+    name = data.get('name')
+    if not name:
+        return (400, {'error': 'name is required'})
+    description = data.get('description')
+    cover = data.get('cover_image_url')
+    trailer = data.get('trailer_url')
+    platforms = data.get('platforms') or []
+    if not isinstance(platforms, list):
+        return (400, {'error': 'platforms must be a list'})
+    cur = conn.cursor()
+    cur.execute('INSERT INTO games (name,description,cover_image_url,trailer_url,platforms) VALUES (?,?,?,?,?)',
+                (name, description, cover, trailer, json.dumps(platforms)))
+    conn.commit()
+    gid = cur.lastrowid
+    cur.execute('SELECT * FROM games WHERE id = ?', (gid,))
+    row = cur.fetchone()
+    return {'game': _game_row_to_dict(row)}
+
+
+def _update_game(conn: sqlite3.Connection, gid: int, data: Dict[str, Any]):
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM games WHERE id = ?', (gid,))
+    if not cur.fetchone():
+        return (404, {'error': 'not found'})
+    # Build update
+    fields = []
+    params = []
+    for k in ('name', 'description', 'cover_image_url', 'trailer_url'):
+        if k in data:
+            fields.append(f"{k} = ?")
+            params.append(data[k])
+    if 'platforms' in data:
+        if not isinstance(data['platforms'], list):
+            return (400, {'error': 'platforms must be a list'})
+        fields.append('platforms = ?')
+        params.append(json.dumps(data['platforms']))
+    if not fields:
+        return (400, {'error': 'no fields to update'})
+    params.append(gid)
+    cur.execute(f'UPDATE games SET {",".join(fields)} WHERE id = ?', params)
+    conn.commit()
+    cur.execute('SELECT * FROM games WHERE id = ?', (gid,))
+    return {'game': _game_row_to_dict(cur.fetchone())}
+
+
+def _delete_game(conn: sqlite3.Connection, gid: int):
+    cur = conn.cursor()
+    cur.execute('SELECT 1 FROM games WHERE id = ?', (gid,))
+    if not cur.fetchone():
+        return (404, {'error': 'not found'})
+    cur.execute('DELETE FROM games WHERE id = ?', (gid,))
+    conn.commit()
+    return (200, {'status': 'deleted'})
+
+
+def _list_platforms(conn: sqlite3.Connection):
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM platforms ORDER BY name COLLATE NOCASE')
+    rows = cur.fetchall()
+    return {'platforms': [_platform_row_to_dict(r) for r in rows]}
 
 
 def handle(req: Dict[str, Any]):
+    """Main plugin entrypoint. Routes requests to the appropriate helpers.
+
+    Returns either a `dict` (200 JSON) or a tuple `(status, body)`.
     """
-    Entry point for the plugin loader.
-
-    The `req` dict is provided by the server loader and includes keys such as:
-      - method: HTTP method
-      - path: full request path
-      - subpath: path after the plugin name (e.g. '/games')
-      - query: parsed query params
-      - headers: request headers
-      - body: raw bytes
-      - json: parsed JSON body or None
-
-    Return values supported by the loader (documented in repo copilot-instructions):
-      - dict -> returned as JSON with 200
-      - (status, body) -> send body with given status
-      - (status, headers, body) -> explicit headers
-
-    For unrecognized subpaths we return a 404 tuple so the server emits that
-    status code to the client.
-    """
-    subpath = req.get('subpath', '') or ''
-    # Normalize subpath (strip leading slash)
+    parsed = req
+    subpath = parsed.get('subpath', '') or ''
     sp = subpath.lstrip('/')
 
-    if sp == 'games':
-        # Return sample games wrapped in a dict so the plugin loader treats
-        # the return value as a JSON object (200). Returning a raw list can be
-        # misinterpreted by the loader as a (status, body) tuple.
-        return {"games": _sample_games()}
+    # Connect to DB and ensure schema
+    conn = _get_conn()
+    try:
+        _ensure_schema(conn)
 
-    if sp == 'platforms':
-        return {"platforms": _sample_platforms()}
+        # Resource routing: accept /games and /platforms and their subpaths
+        if sp.startswith('games'):
+            # Possible forms: /games, /games/<id>
+            parts = sp.split('/') if sp else []
+            method = parsed.get('method', 'GET')
+            if method == 'GET':
+                return _list_games(conn, parsed.get('query', {}))
+            if method == 'POST' and (len(parts) == 1 or parts == ['games']):
+                body = parsed.get('json')
+                if body is None:
+                    return (400, {'error': 'invalid or missing JSON body'})
+                return _create_game(conn, body)
+            if method in ('PUT', 'PATCH') and len(parts) >= 2:
+                try:
+                    gid = int(parts[1])
+                except Exception:
+                    return (400, {'error': 'invalid id'})
+                body = parsed.get('json')
+                if body is None:
+                    return (400, {'error': 'invalid or missing JSON body'})
+                return _update_game(conn, gid, body)
+            if method == 'DELETE' and len(parts) >= 2:
+                try:
+                    gid = int(parts[1])
+                except Exception:
+                    return (400, {'error': 'invalid id'})
+                return _delete_game(conn, gid)
 
-    # Unknown path: return 404 status and a small JSON body explaining the issue.
-    return (404, {"status": "error", "message": f"Unknown subpath: {subpath}"})
+            return (405, {'error': 'method not allowed'})
+
+        if sp.startswith('platforms'):
+            # For now platforms are read-only; we return sample entries if table empty
+            return _list_platforms(conn)
+
+        return (404, {'error': 'unknown resource'})
+    finally:
+        conn.close()
