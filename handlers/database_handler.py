@@ -100,6 +100,24 @@ def _ensure_schema(conn: sqlite3.Connection):
 
 
 def _game_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
+    # Normalize tags to always be a list (defensive: handle legacy string storage)
+    raw_tags = row['tags']
+    tags = []
+    if raw_tags:
+        try:
+            parsed = json.loads(raw_tags) if isinstance(raw_tags, str) else raw_tags
+            if isinstance(parsed, list):
+                tags = parsed
+            elif isinstance(parsed, str):
+                # Single string stored; wrap in list for frontend convenience
+                tags = [parsed]
+            else:
+                # Unexpected type; fallback to empty list
+                tags = []
+        except Exception:
+            # Malformed JSON, fallback to empty list
+            tags = []
+
     return {
         'id': row['id'],
         'name': row['name'],
@@ -109,7 +127,7 @@ def _game_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
         'is_remake': bool(row['is_remake']),
         'is_remaster': bool(row['is_remaster']),
         'related_game_id': row['related_game_id'],
-        'tags': json.loads(row['tags']) if row['tags'] else [],
+        'tags': tags,
         'created_at': row['created_at'],
         'updated_at': row['updated_at']
     }
@@ -153,11 +171,21 @@ def _list_games(conn: sqlite3.Connection, qparams: Dict[str, List[str]]):
         row = cur.fetchone()
         if not row:
             return (404, {'error': 'not found'})
-        return {'game': _game_row_to_dict(row)}
+        game = _game_row_to_dict(row)
+        # Include game_platforms for this game
+        cur.execute('SELECT * FROM game_platforms WHERE game_id = ? ORDER BY platform_id', (gid,))
+        gp_rows = cur.fetchall()
+        game_platforms = [_game_platform_row_to_dict(r) for r in gp_rows]
+        return {'game': game, 'game_platforms': game_platforms}
 
     cur.execute('SELECT * FROM games ORDER BY name COLLATE NOCASE')
     rows = cur.fetchall()
-    return {'games': [_game_row_to_dict(r) for r in rows]}
+    games = [_game_row_to_dict(r) for r in rows]
+    # Include all game_platforms in the response so frontend can perform filtering without extra round-trips
+    cur.execute('SELECT * FROM game_platforms ORDER BY game_id, platform_id')
+    gp_rows = cur.fetchall()
+    game_platforms = [_game_platform_row_to_dict(r) for r in gp_rows]
+    return {'games': games, 'game_platforms': game_platforms}
 
 
 def _create_game(conn: sqlite3.Connection, data: Dict[str, Any]):

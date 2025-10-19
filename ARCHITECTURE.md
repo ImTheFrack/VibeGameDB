@@ -36,6 +36,12 @@
 │  │  Rendering:                                               │   │
 │  │  - renderGames(data)                                      │   │
 │  │  - renderPlatforms(data)                                  │   │
+│  │                                                           │   │
+│  │  Filtering & Display:                                     │   │
+│  │  - applyFilters() — multi-criteria filtering              │   │
+│  │  - populateFilterModal() — populate filter options        │   │
+│  │  - updateActiveFiltersDisplay() — show active filters     │   │
+│  │  - applyDisplayOptions() — show/hide card elements        │   │
 │  └──────────────────────────────────────────────────────────┘   │
 │                              ▲                                    │
 │                              │                                    │
@@ -432,6 +438,144 @@ if (!res.ok) {
 - Can't create a physical game-platform link if platform doesn't support physical
 - Duplicate game-platform-format combinations are prevented by UNIQUE constraint
 
+## Frontend Filtering System
+
+### Filter Architecture
+
+The filtering system uses a centralized state object and modal-based UI:
+
+```javascript
+let currentFilters = {
+    keyword: '',      // Text search in name/description
+    platforms: [],    // Array of platform IDs
+    tags: []          // Array of tag strings
+};
+```
+
+### Filter Types
+
+1. **Keyword Search**: Case-insensitive search across game name and description
+2. **Platform Filtering**: Multi-select checkboxes for platforms (dynamically populated from database)
+3. **Tag Filtering**: Multi-select checkboxes for tags (dynamically extracted from all games)
+
+### Filter Application Logic
+
+```javascript
+function applyFilters() {
+    if (currentTab !== 'games') return;
+    
+    let filtered = allGames;
+    
+    // Filter by keyword (name or description)
+    if (currentFilters.keyword) {
+        const keyword = currentFilters.keyword.toLowerCase();
+        filtered = filtered.filter(game => 
+            game.name.toLowerCase().includes(keyword) ||
+            (game.description && game.description.toLowerCase().includes(keyword))
+        );
+    }
+    
+    // Filter by platforms (OR logic: game must be on at least one selected platform)
+    if (currentFilters.platforms.length > 0) {
+        filtered = filtered.filter(game => {
+            return currentFilters.platforms.some(platformId =>
+                allGamePlatforms.some(gp => gp.game_id === game.id && gp.platform_id === platformId)
+            );
+        });
+    }
+    
+    // Filter by tags (OR logic: game must have at least one selected tag)
+    if (currentFilters.tags.length > 0) {
+        filtered = filtered.filter(game => {
+            const gameTags = game.tags || [];
+            return currentFilters.tags.some(tag => gameTags.includes(tag));
+        });
+    }
+    
+    renderGames(filtered);
+}
+```
+
+### Filter Modal UI
+
+- **Keyword Input**: Text field for name/description search
+- **Platform Checkboxes**: Dynamically populated from `allPlatforms`
+- **Tag Checkboxes**: Dynamically extracted from `allGames` tags
+- **Apply Button**: Applies filters and closes modal
+- **Clear All Button**: Resets all filters to empty state
+- **Active Filter Display**: Shows summary of active filters below filter button
+
+### Smart Tab Integration
+
+- Filter button only appears on the Games tab
+- Filter button hidden on Platforms tab
+- Tab switching properly manages filter button visibility
+- Filters persist when switching tabs and returning to Games
+
+### Extensibility
+
+To add a new filter type:
+
+1. Add new property to `currentFilters` object
+2. Add new section to filter modal HTML
+3. Add checkbox population logic to `populateFilterModal()`
+4. Add filter criteria to `applyFilters()` function
+5. Update `updateActiveFiltersDisplay()` to show new filter
+
+### Potential Future Filters
+
+- Acquisition method (bought, free, bundle, gift, subscription)
+- Remake/Remaster status (Original, Remake, Remaster)
+- Year acquired (date range)
+- Platform format (Digital/Physical)
+- Description length or other metadata
+
+## Frontend Display Controls System
+
+### Display Options Architecture
+
+The display system allows users to customize which elements appear on game cards:
+
+```javascript
+let displayOptions = {
+    show_cover: true,
+    show_title: true,
+    show_description: true,
+    show_tags: true,
+    show_platforms: true
+};
+```
+
+### Display Modal UI
+
+- **Checkboxes**: One for each card element (cover, title, description, tags, platforms)
+- **Apply Button**: Applies display options and re-renders cards immediately
+- **Reset Button**: Restores all display options to default (all visible)
+
+### Display Application Logic
+
+```javascript
+function applyDisplayOptions() {
+    renderGames(currentFilteredGames);
+}
+```
+
+The `renderGames()` function checks `displayOptions` when building each card and conditionally includes elements.
+
+### Visual Feedback
+
+- Display button shows a count when any option is hidden (similar to Filter button)
+- Active display state can be indicated with CSS class `.display-options-on`
+
+### Future Enhancements
+
+- Persist `displayOptions` to localStorage so user preferences survive page reloads
+- Persist `displayOptions` to URL query parameters for shareable filter/display states
+- Add keyboard accessibility (Tab focus, Space/Enter to toggle)
+- Add ARIA attributes for screen readers
+- Animate pill clicks with small visual feedback
+- Show active filters as removable chips near controls bar
+
 ## Future Improvements
 
 1. Add pagination to game/platform lists
@@ -445,4 +589,5 @@ if (!res.ok) {
 9. Add delete confirmation dialogs
 10. Implement bulk operations (add multiple games to a platform)
 11. Add support for game remakes/remasters linking
-12. Implement tag-based filtering and search
+12. Persist filter and display state to localStorage/URL
+13. Add keyboard shortcuts and accessibility improvements

@@ -1,120 +1,118 @@
-## Purpose
-Short, actionable guidance for AI coding agents working on this repository (VibeGameDB).
+# Copilot instructions for VibeGameDB
 
-This repo is now a small web application skeleton: a tiny Python stdlib web server (`main.py`) that serves
-static files from `public/` and a plugin system that loads Python modules from `handlers/` and exposes them
-under `/plugins/<name>`. The frontend SPA shell lives in `public/` and fetches example data from the plugin
-endpoints so the repository can be run locally without external dependencies.
+Purpose
+-------
+This file gives short, actionable guidance for automated coding agents and contributors working on VibeGameDB.
+The repo is a tiny Python stdlib HTTP server that serves a SPA frontend from `public/` and exposes plugin-style
+endpoints under `/plugins/<name>` by loading Python modules from `handlers/`.
 
-Additional note: the server includes a minimal plugin loader that loads Python
-modules from a local `handlers/` directory and exposes them under `/plugins/<name>`.
+Goals for edits
+---------------
+- Keep the HTTP server and plugin loader behaviour unchanged unless intentionally extending it.
+- Prefer small, testable changes. Add unit/integration tests when adding endpoints or changing plugin contracts.
+- Preserve thread-safety: `ThreadingHTTPServer` is used so avoid shared mutable globals without proper locks.
+- Keep frontend and backend contracts stable (JSON shapes, `games`/`platforms`/`game_platforms` payloads) to avoid breaking the SPA.
 
-New project structure you should know about:
+Quick project map
+-----------------
+- `main.py` — HTTP server and plugin loader. Key helpers: `_send()`, `send_text()`, `send_json()`, `parse_body_json()`.
+- `public/` — static SPA files (served as DOC_ROOT): `index.html`, `css/style.css`, `js/app.js`, `img/`.
+- `handlers/` — plugin modules, each must expose `handle(req)`.
+  - `database_handler.py` — CRUD endpoints for games, platforms and `game_platforms` junctions.
+  - `import_handler.py` — CSV import logic (placeholder to extend).
+  - `ai_handler.py` — AI enrichment (uses `config.AI_ENDPOINT_URL`).
+- `data/` — persistent storage (SQLite file `gamedb.sqlite` is used by the backend by default).
+- `config.py` — runtime configuration (DB path, AI endpoint, app title).
 
+What to inspect before changing behavior
+---------------------------------------
+- `main.py` for server bootstrapping, request parsing, and plugin loader caching/locking behavior.
+- `public/js/app.js` for frontend state shapes and functions: `renderGames()`, `populateFilterModal()`, `applyFilters()`, `applyDisplayOptions()`, and how `currentFilters` and `displayOptions` are used.
+- `handlers/database_handler.py` to confirm data shapes returned by `GET` endpoints (games, platforms, game_platforms) and expected POST/PUT payloads.
+- `ARCHITECTURE.md` and `README.md` — authoritative description of implemented features (filtering, display controls, game_platforms).
+
+Plugin loader contract (summary)
+--------------------------------
+- The loader loads `handlers/<name>.py` modules and calls `handle(req)`.
+- `req` is a dict with: `method`, `path`, `subpath`, `query`, `headers`, `body`, `json`.
+  - `json` is only parsed for POST/PUT/PATCH when `Content-Type` contains `application/json` and `Content-Length` is present; if parsing fails `json` is `None`.
+- Plugin return formats accepted by the loader:
+  - Return a `dict` &rarr; JSON response, status 200.
+  - Return `(status, body)` &rarr; explicit status; `body` may be `str`, `bytes`, or JSON-serializable.
+  - Return `(status, headers, body)` &rarr; explicit headers and body.
+  - Any other return value &rarr; coerced to a string and sent as 200 text.
+- Important: prefer returning `dict` for success responses. Returning raw `list`/`tuple` can be misinterpreted as `(status, body)`.
+
+Server-side patterns and helpers to use
+-------------------------------------
+- Use `send_json()` and `send_text()` where appropriate so Content-Type and Content-Length are consistent.
+- Use `parse_body_json()` carefully; it expects `Content-Length` present. If `parse_body_json()` returns `None`, return a 400 with a helpful error.
+- Keep DB connections per-request and short-lived. Avoid module-level connection objects unless protected by locks.
+
+Frontend contract and important shapes
+-------------------------------------
+The frontend expects consistent JSON shapes from the backend. Keep these contracts stable or provide migration-compatible endpoints.
+
+Games (GET /plugins/database_handler/games) — returned object example:
 ```
-/
-├── public/                  # Static files (DOC_ROOT) - SPA shell, CSS, JS, images
-│   ├── index.html           # SPA shell (header, tabs, controls, modals)
-│   ├── css/style.css        # Dark theme styles
-│   ├── js/app.js            # Frontend behavior stubs and fetch calls
-│   └── img/                 # Local placeholder images
-├── handlers/                # Python plugin modules
-│   ├── database_handler.py  # CRUD API stubs for games/platforms (returns sample JSON)
-│   ├── import_handler.py    # CSV import placeholder
-│   └── ai_handler.py        # AI enrichment placeholder (uses config.AI_ENDPOINT_URL)
-├── data/                    # Data storage (empty placeholder)
-├── config.py                # Central configuration (AI endpoint, DB path, app title)
-├── main.py                  # Server and plugin loader (unchanged core behavior)
+{
+  "games": [
+    {
+      "id": 1,
+      "name": "Game Title",
+      "description": "...",
+      "cover_image_url": "...",
+      "trailer_url": "...",
+      "is_remake": false,
+      "is_remaster": false,
+      "related_game_id": null,
+      "tags": ["action", "RPG"],
+      "created_at": "...",
+      "updated_at": "..."
+    }
+  ],
+  "game_platforms": [
+    { "id": 1, "game_id": 1, "platform_id": "steam", "is_digital": true, "acquisition_method": "bought" }
+  ]
+}
+```
+Platforms (GET /plugins/database_handler/platforms) — returned object example:
+```
+{ "platforms": [ { "id": "steam", "name": "Steam", "supports_digital": true, ... } ] }
 ```
 
-## Important implementation notes / patterns to preserve
-- Centralized response helper: `_send(status, body, content_type, extra_headers)` — use this to set Content-Type and Content-Length consistently.
-- Convenience wrappers: `send_text(...)` and `send_json(...)` should be used when adding endpoints.
-- Request JSON parsing: `parse_body_json()` reads Content-Length and returns `None` on missing/invalid JSON — handlers treat `None` as a 400 error response.
- - Plugin request parsing: plugin modules receive a `req` dict from the loader. See the "Plugin loader" section below for fields and return formats.
-- Concurrency: `ThreadingHTTPServer` is used. Keep handlers thread-safe (no shared mutable globals without locking).
-- Logging: `log_message` is overridden to print compact logs to stdout. Follow this approach for consistent console output.
+DATABASE STRUCTURE
+--------------------------
+- Games are now independent entities (no embedded platforms array)
+- Platforms are independent entities (no embedded games array)
+- The `game_platforms` junction table manages the many-to-many relationship
+- Each entry specifies whether the copy is digital or physical
+- A game can appear multiple times on the same platform (once for digital, once for physical)
+- Deleting a game cascades to delete all its `game_platforms` entries
+- Deleting a platform cascades to delete all its `game_platforms` entries
+- Orphaned games (with no platforms) are allowed but should be handled carefully
+VALIDATION RULES
+----------------
+- Platform must support at least one format (digital or physical)
+- Can't create a digital game-platform link if platform doesn't support digital
+- Can't create a physical game-platform link if platform doesn't support physical
+- Duplicate game-platform-format combinations are prevented by UNIQUE constraint
 
-Frontend notes:
-- `public/index.html` is a single page application shell wired to `public/js/app.js`.
-- `app.js` performs initial fetch to `/plugins/database_handler/games` and `/plugins/database_handler/platforms` (see TODO below).
-- Example cards in `index.html` use local SVG placeholders from `public/img/` to avoid external DNS or placeholder service failures.
+Frontend features to be aware of (already implemented)
+-----------------------------------------------------
+- Modal-based multi-criteria filtering on the Games tab (keyword, platform, tags). State object: `currentFilters = { keyword: '', platforms: [], tags: [] }`.
+- Display controls modal for toggling which card elements are shown. State object: `displayOptions = { show_cover, show_title, show_description, show_tags, show_platforms }
+- Clickable "pills" on game cards to quickly apply/remove filters.
+- Smart tab UI: Filter button is only visible on the Games tab.
 
-## Files to inspect when making changes
-- `main.py` — entire server and plugin loader.
-- `README.md` — updated project description and run instructions.
+When editing frontend code
+-------------------------
+- Keep the `currentFilters` and `displayOptions` objects consistent and avoid renaming their properties without updating all usages.
+- Use `populateFilterModal()` to source platforms (from `/plugins/database_handler/platforms`) and tags (extracted from `games`).
+- If you change the format of a games or platforms response, update `app.js` and `ARCHITECTURE.md`/`README.md` together.
 
-Optional: `handlers/` — place example plugin modules here; the loader looks for `handlers/<name>.py`.
-
-## Developer workflows (how to run & test locally)
-- Run the server directly with Python. The process reads `HOST` and `PORT` environment variables in `__main__`.
-- Note: `run()` has a default port of `8000`, while `__main__` uses the environment variable default `5000` — be aware of this mismatch when testing.
-
-Example (PowerShell):
-```powershell
-$env:HOST = '0.0.0.0'
-$env:PORT = '5000'
-python .\main.py
-```
-
-Quick smoke tests (PowerShell):
-```powershell
-# health
-curl http://localhost:5000/health
-# echo GET
-curl "http://localhost:5000/echo?msg=hello"
-# echo POST (JSON)
-curl -X POST -H "Content-Type: application/json" -d '{"x":1}' http://localhost:5000/echo
-```
-
-Plugin quick tests (PowerShell):
-
-```powershell
-# GET plugin (no body)
-curl http://localhost:5000/plugins/hello
-
-# POST plugin with JSON
-curl -X POST -H "Content-Type: application/json" -d '{"name":"alice"}' http://localhost:5000/plugins/hello
-```
-
-## What to change and how to structure edits
-- Add new endpoints by editing `do_GET`, `do_POST`, and `do_HEAD` in `RequestHandler`. Use `send_json`/`send_text` and `parse_body_json`.
-- Avoid changing the server bootstrap unless adding a CLI or config file; prefer environment variables for runtime overrides.
-- Keep changes small and testable: add a unit-level test script or small integration test that starts the server on an ephemeral port and exercises endpoints.
-
-When adding or modifying frontend behavior, update `public/js/app.js` and add any new static assets under `public/` so they are served by the doc root.
-
-## Plugin loader (what to know when editing)
-
-- The loader looks for modules at `handlers/<name>.py` where `<name>` must match `[A-Za-z0-9_]+`.
-- Modules are loaded via `importlib.util.spec_from_file_location` and cached in `_PLUGIN_CACHE` with mtime; the cache is protected by `_PLUGIN_LOCK` and modules are reloaded when file mtime changes.
-- Plugins must expose a callable `handle(req)` function. The server will call `module.handle(req)` and normalize the result.
-- `req` shape (provided to plugins):
-	- `method`: HTTP method string
-	- `path`: full request path
-	- `subpath`: part of the path after the plugin name (leading slash or empty)
-	- `query`: parsed query params (values are lists)
-	- `headers`: dict of request headers
-	- `body`: raw bytes (for POST/PUT/PATCH when Content-Length > 0)
-	- `json`: parsed JSON or `None` (attempted only for POST/PUT/PATCH when Content-Type contains `application/json`)
-
-- Plugin return formats understood by the loader:
-	- `dict` -> returned as JSON (200)
-	- `(status, body)` -> sends body with given status (body may be str, bytes, dict/list)
-	- `(status, headers, body)` -> same as above with explicit headers
-	- any other value -> converted to string and sent as 200 text
-
-Important: prefer returning `dict` objects for successful JSON responses. Returning a raw `list` can be ambiguous: the loader treats `list/tuple` of length >= 2 as a `(status, body)` tuple, which can cause runtime errors if the first list element is not an integer status code.
-
-## Integration points and side effects to watch
-- The server relies on the `Content-Length` header for POST JSON parsing; clients that send chunked bodies or omit the header will not be supported.
-- No database or external services are present — adding one should include a simple config pattern (env vars) and avoid global state.
-
-TODO (near term priorities)
-- Wire `public/js/app.js` to real CRUD endpoints and implement minimal `POST /plugins/database_handler/games` to create entries in a simple JSON or SQLite file (under `data/`).
-- Implement CSV parsing in `handlers/import_handler.py` and mapping preview UI in `public/index.html`/`app.js`.
-- Add modal open/close logic and form submission handling in `public/js/app.js`.
-- Add small integration tests that start the server and assert plugin endpoints return expected shapes.
-- Add instructions in `README.md` for developer workflow and a `requirements.txt` only if external dependencies are introduced.
-
-If you need me to implement any TODOs, tell me which one to tackle next and I'll change the code directly.
+Security, side-effects and concurrency
+-------------------------------------
+- Do not commit secrets (API keys) into the repo. Prefer environment variables via `config.py`.
+- The server relies on `Content-Length` for POST JSON parsing — clients must set this header. Document this in tests if necessary.
+- Avoid long-running synchronous work in request handlers (offload to background jobs or threads if needed).

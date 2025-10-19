@@ -95,17 +95,23 @@ Links games to platforms and tracks how you obtained each copy and in what forma
 - ✅ **SQLite persistence**: Data stored in `data/gamedb.sqlite`.
 - ✅ **Integration tests**: `scripts/db_integration_test.py` validates CRUD operations.
 - ✅ **Two main tabs**: "Games" (showing platforms each game is on) and "Platforms" (showing games on each platform)
-- ✅ **Summary cards**: Display games/platforms with key metadata, abililty to alter what is displayed under "dispaly" button.
-- ✅ **Filtering**: "Filter" button with ability to filter games by platform, tag, keyword (AND default or "exact match").
-- ✅ **Pills**: Smart pills on sumamry cards allow quickly applying filters or removing them.
+- ✅ **Summary cards**: Display games/platforms with key metadata.
+- ✅ **Display Controls**: "Display" button with modal to show/hide card elements (cover, title, description, tags, platforms). Changes apply immediately.
+- ✅ **Multi-Criteria Filtering**: "Filter" button with modal supporting:
+  - Keyword search (name/description, case-insensitive)
+  - Platform filtering (multi-select checkboxes)
+  - Tag filtering (multi-select checkboxes, dynamically extracted)
+  - Active filter display in controls bar
+- ✅ **Smart Tab Integration**: Filter button only appears on Games tab; hidden on Platforms tab.
+- ✅ **Interactive Pills**: Clickable pills on game cards allow quick filter application/removal.
 
 ### Planned (In Priority Order)
 
 1. **Browse & Filter** — View games and platforms in a Netflix-style scrollable interface with:
    - Sortable columns (name, date added, platform count, etc.) - dropdown right now is a dummy
    - Pagination and lazy loading
-   - IMPLEMENTED PARTIALLY: Filter by platform, tag, acquisition method, remake/remaster status
-   - 
+   - ✅ IMPLEMENTED: Filter by platform, tag, keyword
+   - TODO: Filter by acquisition method, remake/remaster status
 
 2. **Search & Autocomplete** — Fast search across games and platforms:
    - Autocomplete as you type (name, description, tags, platform names)
@@ -266,11 +272,17 @@ Important note: prefer returning `dict` for JSON success responses. Returning a 
 
 The features listed above are prioritized by user value and implementation complexity. Start with **Browse & Filter** and **Search & Autocomplete** to make the app usable for viewing your library, then move to **Edit & Bulk Operations** and **Smart Add Game** for data management.
 
+**Completed**:
+- ✅ Basic CRUD operations (games, platforms, game-platform links)
+- ✅ Multi-criteria filtering (keyword, platform, tag)
+- ✅ Display controls (show/hide card elements)
+- ✅ Interactive pills for quick filter application
+
 **Near-term focus** (next 2–3 sprints):
-- Browse & Filter (feature #1)
-- Search & Autocomplete (feature #2)
-- Edit & Bulk Operations (feature #3)
-- Smart Add Game (feature #4)
+- Edit & Bulk Operations (feature #3) — edit game/platform modals with pre-filled data
+- Search & Autocomplete (feature #2) — fast search with autocomplete suggestions
+- Smart Add Game (feature #4) — intelligent game addition workflow
+- Additional filters (acquisition method, remake/remaster status)
 
 **Medium-term** (sprints 4–6):
 - AI Enrichment (feature #5)
@@ -282,6 +294,7 @@ The features listed above are prioritized by user value and implementation compl
 - Tags & Organization (feature #11)
 - Responsive UI & Polish (feature #12)
 - Platform API sync (part of feature #7)
+- Filter/display state persistence (localStorage, URL parameters)
 
 ## Testing
 
