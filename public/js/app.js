@@ -43,6 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const formFilter = document.getElementById('form-filter');
     const btnFilter = document.getElementById('btn-filter');
     const gamesControls = document.getElementById('games-controls');
+    const headerSearch = document.getElementById('search-input');
     // Some older layouts used a header platform filters container. Prefer that
     // if present, otherwise fall back to the filter modal container. Use a
     // detached div as a harmless fallback so callers can safely query it.
@@ -330,6 +331,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 // place cursor at end
                 try { kw.selectionStart = kw.selectionEnd = kw.value.length; } catch (e) {}
             }
+        });
+    }
+
+    // Header search: live update the keyword filter (light debounce)
+    if (headerSearch) {
+        let headerTimer = null;
+        headerSearch.addEventListener('input', (e) => {
+            clearTimeout(headerTimer);
+            headerTimer = setTimeout(() => {
+                currentFilters.keyword = (e.target.value || '').trim().toLowerCase();
+                // When using header search, clear typed platform/tag selections to avoid conflicts
+                currentFilters.platforms = [];
+                currentFilters.tags = [];
+                applyFilters();
+                updateActiveFiltersDisplay();
+            }, 250);
         });
     }
 

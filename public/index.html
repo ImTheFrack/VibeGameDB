@@ -196,9 +196,14 @@
                 <button class="modal-close" data-close>&times;</button>
             </header>
             <form id="form-filter" class="modal-form">
-                <div>
-                    <label>Search by Name, Tag or Keyword</label>
-                    <input type="text" id="filter-keyword" placeholder="e.g., Zelda, action, RPG...">
+                <div style="display:flex;align-items:center;gap:8px">
+                    <div style="flex:1">
+                        <label>Search by Name, Tag or Keyword</label>
+                        <input type="text" id="filter-keyword" placeholder="e.g., Zelda, action, RPG...">
+                    </div>
+                    <div class="help-icon" tabindex="0" aria-label="Search help">?
+                        <div class="help-tooltip">Type "exact phrase" for exact match; otherwise multiple words are treated as AND.</div>
+                    </div>
                 </div>
 
                 <div>
