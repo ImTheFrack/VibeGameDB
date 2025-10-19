@@ -4,9 +4,13 @@ This script runs CRUD operations against a temporary SQLite file under data/
 so it doesn't interfere with any real DB file.
 """
 import os
+import sys
 import tempfile
 import shutil
 import json
+
+# Add parent directory to path so handlers can be imported
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from handlers import database_handler as dbh
 

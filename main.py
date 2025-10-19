@@ -338,7 +338,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         # Cleaner console logs
         print(f"{self.address_string()} - - [{self.log_date_time_string()}] {fmt % args}")
 
-def run(host="0.0.0.0", port=8000):
+def run(host="0.0.0.0", port=5000):
     server = ThreadingHTTPServer((host, port), RequestHandler)
     print(f"Serving on http://{host}:{port}\nDoc root: {DOC_ROOT}")
     try:
