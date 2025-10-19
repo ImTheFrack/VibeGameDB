@@ -71,7 +71,6 @@ document.addEventListener('DOMContentLoaded', () => {
         formGame.reset();
         document.getElementById('modal-game-title').textContent = 'Add Game';
         formGame.dataset.gameId = '';
-        await populatePlatformsDropdown();
         openModal(modalGame);
     });
 
