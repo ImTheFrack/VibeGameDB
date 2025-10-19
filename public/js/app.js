@@ -301,7 +301,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const target = e.currentTarget.getAttribute('data-tab');
             console.log('Switching tab to', target);
             currentTab = target;  // Track current tab
-            tabs.forEach(t => t.classList.toggle('active', t === tab));
+            tabs.forEach(t => {
+                t.classList.toggle('active', t === tab);
+                t.setAttribute('aria-selected', t === tab ? 'true' : 'false');
+            });
             
             // Show/hide filter button based on tab
             if (gamesControls) {
@@ -432,7 +435,9 @@ document.addEventListener('DOMContentLoaded', () => {
         gamesControls.style.display = 'flex';
         
         // Now load the games
-        fetchGames();
+        console.log('Initial load: fetching games...');
+        await fetchGames();
+        console.log('Initial load: games fetched and rendered');
     })();
 });
 
