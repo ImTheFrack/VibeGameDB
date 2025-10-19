@@ -15,11 +15,142 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnAddPlatform = document.getElementById('btn-add-platform');
     const btnImportCSV = document.getElementById('btn-import-csv');
     const tabs = Array.from(document.querySelectorAll('.tab'));
+    const modalGame = document.getElementById('modal-game');
+    const modalPlatform = document.getElementById('modal-platform');
+    const modalImport = document.getElementById('modal-import');
+    const formGame = document.getElementById('form-game');
+    const formPlatform = document.getElementById('form-platform');
 
-    // Wire up simple click handlers that will later open real modals / forms
-    btnAddGame.addEventListener('click', () => console.log('Opening Add Game modal...'));
-    btnAddPlatform.addEventListener('click', () => console.log('Opening Add Platform modal...'));
-    btnImportCSV.addEventListener('click', () => console.log('Opening Import CSV modal...'));
+    // ----------------------
+    // Modal Management
+    // ----------------------
+
+    function openModal(modal) {
+        modal.setAttribute('aria-hidden', 'false');
+        modal.style.display = 'flex';
+    }
+
+    function closeModal(modal) {
+        modal.setAttribute('aria-hidden', 'true');
+        modal.style.display = 'none';
+    }
+
+    // Close modal when clicking close buttons or outside the modal
+    document.querySelectorAll('[data-close]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const modal = e.target.closest('.modal');
+            if (modal) closeModal(modal);
+        });
+    });
+
+    // Close modal when clicking outside the modal-content
+    [modalGame, modalPlatform, modalImport].forEach(modal => {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal(modal);
+        });
+    });
+
+    // ----------------------
+    // Add Game / Platform Buttons
+    // ----------------------
+
+    btnAddGame.addEventListener('click', async () => {
+        formGame.reset();
+        document.getElementById('modal-game-title').textContent = 'Add Game';
+        formGame.dataset.gameId = '';
+        await populatePlatformsDropdown();
+        openModal(modalGame);
+    });
+
+    btnAddPlatform.addEventListener('click', () => {
+        formPlatform.reset();
+        document.getElementById('modal-platform-title').textContent = 'Add Platform';
+        formPlatform.dataset.platformId = '';
+        openModal(modalPlatform);
+    });
+
+    btnImportCSV.addEventListener('click', () => {
+        openModal(modalImport);
+    });
+
+    // ----------------------
+    // Form Submission Handlers
+    // ----------------------
+
+    formGame.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const formData = new FormData(formGame);
+        const platformSelect = formGame.querySelector('select[name="platforms"]');
+        const selectedPlatforms = Array.from(platformSelect.selectedOptions).map(opt => opt.value);
+
+        const gameData = {
+            name: formData.get('title'),
+            description: formData.get('description'),
+            cover_image_url: formData.get('cover_image_url'),
+            trailer_url: formData.get('trailer_url'),
+            platforms: selectedPlatforms
+        };
+
+        const gameId = formGame.dataset.gameId;
+        const endpoint = gameId
+            ? `/plugins/database_handler/games/${gameId}`
+            : '/plugins/database_handler/games';
+        const method = gameId ? 'PUT' : 'POST';
+
+        try {
+            const res = await fetch(endpoint, {
+                method: method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(gameData)
+            });
+            if (!res.ok) {
+                const err = await res.json();
+                alert(`Error: ${err.error || 'Failed to save game'}`);
+                return;
+            }
+            closeModal(modalGame);
+            fetchGames();
+        } catch (err) {
+            console.error('Form submission error:', err);
+            alert('Network error: ' + err.message);
+        }
+    });
+
+    formPlatform.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const formData = new FormData(formPlatform);
+
+        const platformData = {
+            name: formData.get('name'),
+            type: formData.get('type'),
+            description: formData.get('description'),
+            icon_url: formData.get('icon_url')
+        };
+
+        const platformId = formPlatform.dataset.platformId;
+        const endpoint = platformId
+            ? `/plugins/database_handler/platforms/${platformId}`
+            : '/plugins/database_handler/platforms';
+        const method = platformId ? 'PUT' : 'POST';
+
+        try {
+            const res = await fetch(endpoint, {
+                method: method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(platformData)
+            });
+            if (!res.ok) {
+                const err = await res.json();
+                alert(`Error: ${err.error || 'Failed to save platform'}`);
+                return;
+            }
+            closeModal(modalPlatform);
+            fetchPlatforms();
+        } catch (err) {
+            console.error('Form submission error:', err);
+            alert('Network error: ' + err.message);
+        }
+    });
 
     // Tab switching behavior (simple client-only for now)
     tabs.forEach(tab => {
@@ -64,13 +195,31 @@ async function apiGet(path) {
 async function fetchGames() {
     // Endpoint matches plugin loader mapping in main.py
     const data = await apiGet('/plugins/database_handler/games');
-    if (data) renderGames(data);
+    if (data) renderGames(data.games || []);
 }
 
 // Fetch list of platforms from the backend plugin
 async function fetchPlatforms() {
     const data = await apiGet('/plugins/database_handler/platforms');
-    if (data) renderPlatforms(data);
+    if (data) renderPlatforms(data.platforms || []);
+}
+
+// Fetch platforms and populate the dropdown in the game form
+async function populatePlatformsDropdown() {
+    const data = await apiGet('/plugins/database_handler/platforms');
+    if (!data) return;
+    
+    const platformSelect = document.querySelector('select[name="platforms"]');
+    if (!platformSelect) return;
+    
+    platformSelect.innerHTML = '';
+    const platforms = data.platforms || [];
+    platforms.forEach(p => {
+        const option = document.createElement('option');
+        option.value = p.id || p.name;
+        option.textContent = p.name;
+        platformSelect.appendChild(option);
+    });
 }
 
 // ----------------------
@@ -95,12 +244,16 @@ function renderGames(games) {
         card.className = 'card game-card';
 
         // Build inner HTML using template literals. In production, prefer safer DOM APIs
+        const platformsHtml = (game.platforms || [])
+            .map(p => `<span class="plat">${escapeHtml(typeof p === 'string' ? p : p.name || p)}</span>`)
+            .join('');
+        
         card.innerHTML = `
-            <img class="card-cover" src="${game.cover_image_url || 'https://via.placeholder.com/240x135?text=No+Cover'}" alt="cover">
+            <img class="card-cover" src="${game.cover_image_url || '/img/cover_placeholder.svg'}" alt="cover" onerror="this.src='/img/cover_placeholder.svg'">
             <div class="card-body">
                 <h3 class="card-title">${escapeHtml(game.name)}</h3>
                 <p class="card-desc">${escapeHtml(game.description || '')}</p>
-                <div class="platform-icons">${(game.platforms||[]).map(p => `<span class="plat">${escapeHtml(p)}</span>`).join('')}</div>
+                <div class="platform-icons">${platformsHtml}</div>
                 <div class="card-actions"><button class="btn btn-sm edit-game" data-id="${game.id}">Edit</button></div>
             </div>
         `;
@@ -124,10 +277,10 @@ function renderPlatforms(platforms) {
         const card = document.createElement('article');
         card.className = 'card platform-card';
         card.innerHTML = `
-            <img class="card-cover" src="${p.icon_url || 'https://via.placeholder.com/120x60?text=Icon'}" alt="icon">
+            <img class="card-cover" src="${p.icon_url || '/img/icon_placeholder.svg'}" alt="icon" onerror="this.src='/img/icon_placeholder.svg'">
             <div class="card-body">
                 <h3 class="card-title">${escapeHtml(p.name)}</h3>
-                <p class="card-desc">${escapeHtml(p.type || '')} - ${p.count || 0} games</p>
+                <p class="card-desc">${escapeHtml(p.type || 'Digital')}</p>
                 <div class="card-actions"><button class="btn btn-sm edit-platform" data-id="${p.id}">Edit</button></div>
             </div>
         `;

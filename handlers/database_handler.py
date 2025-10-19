@@ -177,6 +177,65 @@ def _list_platforms(conn: sqlite3.Connection):
     return {'platforms': [_platform_row_to_dict(r) for r in rows]}
 
 
+def _create_platform(conn: sqlite3.Connection, data: Dict[str, Any]):
+    # Basic validation
+    name = data.get('name')
+    if not name:
+        return (400, {'error': 'name is required'})
+    platform_type = data.get('type', 'Digital')
+    description = data.get('description')
+    icon_url = data.get('icon_url')
+    
+    # Generate a simple ID from the name (lowercase, replace spaces with underscores)
+    pid = name.lower().replace(' ', '_').replace('-', '_')
+    
+    cur = conn.cursor()
+    try:
+        cur.execute('INSERT INTO platforms (id, name, type, icon_url) VALUES (?, ?, ?, ?)',
+                    (pid, name, platform_type, icon_url))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        return (400, {'error': 'platform already exists'})
+    
+    cur.execute('SELECT * FROM platforms WHERE id = ?', (pid,))
+    row = cur.fetchone()
+    return {'platform': _platform_row_to_dict(row)}
+
+
+def _update_platform(conn: sqlite3.Connection, pid: str, data: Dict[str, Any]):
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM platforms WHERE id = ?', (pid,))
+    if not cur.fetchone():
+        return (404, {'error': 'not found'})
+    
+    # Build update
+    fields = []
+    params = []
+    for k in ('name', 'type', 'icon_url'):
+        if k in data:
+            fields.append(f"{k} = ?")
+            params.append(data[k])
+    
+    if not fields:
+        return (400, {'error': 'no fields to update'})
+    
+    params.append(pid)
+    cur.execute(f'UPDATE platforms SET {",".join(fields)} WHERE id = ?', params)
+    conn.commit()
+    cur.execute('SELECT * FROM platforms WHERE id = ?', (pid,))
+    return {'platform': _platform_row_to_dict(cur.fetchone())}
+
+
+def _delete_platform(conn: sqlite3.Connection, pid: str):
+    cur = conn.cursor()
+    cur.execute('SELECT 1 FROM platforms WHERE id = ?', (pid,))
+    if not cur.fetchone():
+        return (404, {'error': 'not found'})
+    cur.execute('DELETE FROM platforms WHERE id = ?', (pid,))
+    conn.commit()
+    return (200, {'status': 'deleted'})
+
+
 def handle(req: Dict[str, Any]):
     """Main plugin entrypoint. Routes requests to the appropriate helpers.
 
@@ -222,8 +281,27 @@ def handle(req: Dict[str, Any]):
             return (405, {'error': 'method not allowed'})
 
         if sp.startswith('platforms'):
-            # For now platforms are read-only; we return sample entries if table empty
-            return _list_platforms(conn)
+            # Possible forms: /platforms, /platforms/<id>
+            parts = sp.split('/') if sp else []
+            method = parsed.get('method', 'GET')
+            if method == 'GET':
+                return _list_platforms(conn)
+            if method == 'POST' and (len(parts) == 1 or parts == ['platforms']):
+                body = parsed.get('json')
+                if body is None:
+                    return (400, {'error': 'invalid or missing JSON body'})
+                return _create_platform(conn, body)
+            if method in ('PUT', 'PATCH') and len(parts) >= 2:
+                pid = parts[1]
+                body = parsed.get('json')
+                if body is None:
+                    return (400, {'error': 'invalid or missing JSON body'})
+                return _update_platform(conn, pid, body)
+            if method == 'DELETE' and len(parts) >= 2:
+                pid = parts[1]
+                return _delete_platform(conn, pid)
+            
+            return (405, {'error': 'method not allowed'})
 
         return (404, {'error': 'unknown resource'})
     finally:
