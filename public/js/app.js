@@ -29,10 +29,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const formPlatform = document.getElementById('form-platform');
     const platformFiltersContainer = document.querySelector('.platform-filters');
 
-    // State: track current filter and all games
-    let currentPlatformFilter = 'all';
-    let allGames = [];
-
     // ----------------------
     // Modal Management
     // ----------------------
@@ -120,9 +116,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert(`Error: ${err.error || 'Failed to save game'}`);
                 return;
             }
-            closeModal(modalPlatform);
-            await populatePlatformFilters();  // Refresh filter buttons (always)
-            if (currentTab === 'platforms') fetchPlatforms();  // Only refresh grid if on Platforms tab
+            closeModal(modalGame);  // ← Changed from modalPlatform
+            await populatePlatformFilters();
+            if (currentTab === 'games') fetchGames();
         } catch (err) {
             console.error('Form submission error:', err);
             alert('Network error: ' + err.message);
@@ -275,6 +271,9 @@ function filterGamesByPlatform(platformId) {
         btn.classList.toggle('active', btn.getAttribute('data-platform') === platformId);
     });
     
+    // Only render games if we're on the Games tab
+    if (currentTab !== 'games') return;
+    
     // Filter and re-render games
     if (platformId === 'all') {
         renderGames(allGames);
@@ -305,60 +304,6 @@ async function populatePlatformsDropdown() {
         option.textContent = p.name;
         platformSelect.appendChild(option);
     });
-}
-
-// Populate platform filter buttons from database
-async function populatePlatformFilters() {
-    const data = await apiGet('/plugins/database_handler/platforms');
-    if (!data) return;
-    
-    const platformFiltersContainer = document.querySelector('.platform-filters');
-    if (!platformFiltersContainer) return;
-    
-    // Clear existing buttons except "All"
-    const existingButtons = platformFiltersContainer.querySelectorAll('.filter-btn');
-    existingButtons.forEach(btn => {
-        if (btn.getAttribute('data-platform') !== 'all') {
-            btn.remove();
-        }
-    });
-    
-    // Add buttons for each platform
-    const platforms = data.platforms || [];
-    platforms.forEach(p => {
-        const btn = document.createElement('button');
-        btn.className = 'filter-btn';
-        btn.setAttribute('data-platform', p.id || p.name);
-        btn.textContent = p.name;
-        btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            filterGamesByPlatform(p.id || p.name);
-        });
-        platformFiltersContainer.appendChild(btn);
-    });
-}
-
-// Filter games by selected platform
-function filterGamesByPlatform(platformId) {
-    currentPlatformFilter = platformId;
-    
-    // Update active button
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.getAttribute('data-platform') === platformId);
-    });
-    
-    // Filter and re-render games
-    if (platformId === 'all') {
-        renderGames(allGames);
-    } else {
-        const filtered = allGames.filter(game => {
-            const gamePlatforms = game.platforms || [];
-            return gamePlatforms.some(p => 
-                (typeof p === 'string' ? p : p.id || p.name) === platformId
-            );
-        });
-        renderGames(filtered);
-    }
 }
 
 // ----------------------
