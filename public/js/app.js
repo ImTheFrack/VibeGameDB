@@ -16,6 +16,15 @@ let allGamePlatforms = [];          // All game-platform links
 let currentTab = 'games';           // Currently active tab
 let currentGameId = null;           // Track which game we're adding to a platform
 let allTags = [];                   // All unique tags from games
+let platformFilterAnd = false;      // whether multiple platform filters require AND semantics
+// Display options: when false the corresponding part is hidden
+let displayOptions = {
+    show_cover: true,
+    show_title: true,
+    show_description: true,
+    show_tags: true,
+    show_platforms: true
+};
 
 // Filter state
 let currentFilters = {
@@ -74,7 +83,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Close modal when clicking outside the modal-content
-    [modalGame, modalPlatform, modalImport, modalAddToPlatform, modalFilter].forEach(modal => {
+    const modalList = [modalGame, modalPlatform, modalImport, modalAddToPlatform, modalFilter];
+    // also include display modal if present
+    const modalDisplay = document.getElementById('modal-display');
+    if (modalDisplay) modalList.push(modalDisplay);
+    modalList.forEach(modal => {
         modal.addEventListener('click', (e) => {
             if (e.target === modal) closeModal(modal);
         });
@@ -334,6 +347,35 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Display button/modal wiring
+    const btnDisplay = document.getElementById('btn-display');
+    const modalDisplayEl = document.getElementById('modal-display');
+    const formDisplay = document.getElementById('form-display');
+    if (btnDisplay && modalDisplayEl && formDisplay) {
+        btnDisplay.addEventListener('click', (e) => {
+            // populate current states
+            formDisplay.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                const name = cb.name;
+                cb.checked = !!displayOptions[name];
+            });
+            openModal(modalDisplayEl);
+        });
+
+        formDisplay.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const formData = new FormData(formDisplay);
+            // Update displayOptions and rerender
+            displayOptions.show_cover = !!formData.get('show_cover');
+            displayOptions.show_title = !!formData.get('show_title');
+            displayOptions.show_description = !!formData.get('show_description');
+            displayOptions.show_tags = !!formData.get('show_tags');
+            displayOptions.show_platforms = !!formData.get('show_platforms');
+            closeModal(modalDisplayEl);
+            // re-render with current filters (re-apply filters to keep behavior)
+            applyFilters();
+        });
+    }
+
     // Header search: live update the keyword filter (light debounce)
     if (headerSearch) {
         let headerTimer = null;
@@ -496,7 +538,17 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Error checking/seeding database:', err);
         }
         
-        // Fetch platforms first
+        // Fetch config first (so filter behavior is known early)
+        try {
+            const cfg = await apiGet('/plugins/config_handler');
+            if (cfg && typeof cfg.platform_filter_and !== 'undefined') {
+                platformFilterAnd = Boolean(cfg.platform_filter_and);
+            }
+        } catch (err) {
+            console.error('Failed to fetch config:', err);
+        }
+
+        // Fetch platforms next
         const platformData = await apiGet('/plugins/database_handler/platforms');
         if (platformData) {
             allPlatforms = platformData.platforms || [];
@@ -590,8 +642,10 @@ async function populateFilterModal() {
             const label = document.createElement('label');
             const input = document.createElement('input');
             input.type = 'checkbox';
+            // store string values for checkbox inputs and compare against
+            // stringified currentFilters entries to avoid type mismatches
             input.value = String(p.id);
-            input.checked = currentFilters.platforms.includes(p.id);
+            input.checked = currentFilters.platforms.includes(String(p.id));
             label.appendChild(input);
             label.appendChild(document.createTextNode(p.name));
             platformsContainer.appendChild(label);
@@ -651,11 +705,27 @@ function applyFilters() {
     
     // Filter by platforms
     if (currentFilters.platforms.length > 0) {
-        filtered = filtered.filter(game => {
-            return currentFilters.platforms.some(platformId =>
-                allGamePlatforms.every(gp => gp.game_id === game.id && gp.platform_id === platformId)
-            );
-        });
+        if (platformFilterAnd) {
+            // AND semantics: require that the game has at least one link for
+            // every selected platform.
+            filtered = filtered.filter(game => {
+                return currentFilters.platforms.every(platformId => {
+                    return allGamePlatforms.some(gp =>
+                        String(gp.game_id) === String(game.id) && String(gp.platform_id) === String(platformId)
+                    );
+                });
+            });
+        } else {
+            // OR semantics (existing behavior): game is kept if it exists on
+            // any of the selected platforms.
+            filtered = filtered.filter(game => {
+                return currentFilters.platforms.some(platformId => {
+                    return allGamePlatforms.some(gp =>
+                        String(gp.game_id) === String(game.id) && String(gp.platform_id) === String(platformId)
+                    );
+                });
+            });
+        }
     }
     
     // Filter by tags
@@ -820,14 +890,20 @@ function renderGames(games) {
         const tagsHtml = (game.tags || [])
             .map(tag => `<span class="tag" data-tag="${escapeHtml(tag)}">${escapeHtml(tag)}</span>`)
             .join(' ');
-        
+        // Build card HTML conditionally based on displayOptions
+        const coverHtml = displayOptions.show_cover ? `<img class="card-cover" src="${game.cover_image_url || '/img/cover_placeholder.svg'}" alt="cover" onerror="this.src='/img/cover_placeholder.svg'">` : '';
+        const titleHtml = displayOptions.show_title ? `<h3 class="card-title">${escapeHtml(game.name)}</h3>` : '';
+        const descHtml = displayOptions.show_description ? `<p class="card-desc">${escapeHtml(game.description || '')}</p>` : '';
+        const tagsBlockHtml = (displayOptions.show_tags && tagsHtml) ? `<div class="tags">${tagsHtml}</div>` : '';
+        const platformsBlockHtml = displayOptions.show_platforms ? `<div class="platform-icons">${platformsHtml || '<span class="muted">No platforms</span>'}</div>` : '';
+
         card.innerHTML = `
-            <img class="card-cover" src="${game.cover_image_url || '/img/cover_placeholder.svg'}" alt="cover" onerror="this.src='/img/cover_placeholder.svg'">
+            ${coverHtml}
             <div class="card-body">
-                <h3 class="card-title">${escapeHtml(game.name)}</h3>
-                <p class="card-desc">${escapeHtml(game.description || '')}</p>
-                ${tagsHtml ? `<div class="tags">${tagsHtml}</div>` : ''}
-                <div class="platform-icons">${platformsHtml || '<span class="muted">No platforms</span>'}</div>
+                ${titleHtml}
+                ${descHtml}
+                ${tagsBlockHtml}
+                ${platformsBlockHtml}
                 <div class="card-actions">
                     <button class="btn btn-sm edit-game" data-id="${game.id}">Edit</button>
                     <button class="btn btn-sm add-to-platform" data-id="${game.id}">Add Platform</button>

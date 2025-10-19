@@ -229,6 +229,29 @@
         </div>
     </div>
 
+    <!-- Display Modal -->
+    <div id="modal-display" class="modal" aria-hidden="true">
+        <div class="modal-content">
+            <header class="modal-header">
+                <h2>Display Options</h2>
+                <button class="modal-close" data-close>&times;</button>
+            </header>
+            <form id="form-display" class="modal-form">
+                <div class="inline-checkboxes">
+                    <label><input type="checkbox" name="show_cover" checked> Cover Art</label>
+                    <label><input type="checkbox" name="show_title" checked> Title</label>
+                    <label><input type="checkbox" name="show_description" checked> Description</label>
+                    <label><input type="checkbox" name="show_tags" checked> Tags</label>
+                    <label><input type="checkbox" name="show_platforms" checked> Platforms</label>
+                </div>
+                <div class="modal-actions">
+                    <button type="submit" class="btn btn-primary">Apply</button>
+                    <button type="button" class="btn" data-close>Close</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script src="/js/app.js"></script>
 </body>
 </html>

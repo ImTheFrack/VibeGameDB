@@ -9,15 +9,20 @@ This repository contains a small Python stdlib HTTP server (`main.py`) which ser
 - `public/` — frontend single-page app shell and static assets:
   - `index.html` — SPA shell with header, search, tabs, controls, and modals (templates)
   - `css/style.css` — dark theme styles
-  - `js/app.js` — frontend behavior stubs, event handlers, and fetch calls
-  - `img/` — local SVG placeholder images used by the examples
+  - `js/app.js` — frontend behavior, event handlers, and fetch calls
+  - `img/` — local SVG placeholder images that can be used by examples
 - `handlers/` — plugin modules (each exports `handle(req)`):
+  - `config_handler.py` - reads config.values and exposes it under the plugin loaders
   - `database_handler.py` — CRUD API for games and platforms; persists to SQLite
   - `import_handler.py` — CSV import with intelligent column mapping and validation
   - `ai_handler.py` — AI enrichment (descriptions, tags, summaries) via `config.AI_ENDPOINT_URL`
-  - `hello.py` — small echo example (existing)
+  - `init.py` — make handlers an importable task
+  - `seed_handler.py` — make dummy data if no database.
 - `config.py` — central configuration (AI endpoint, DB path, app title)
 - `data/` — SQLite database file (`gamedb.sqlite`) and other persistent data
+- `scripts/`— test scripts
+  - `check_imports.py` — check if imports are properly imported in python
+  - `db_integration_test.py` — check if database CRUD tools (database_handler) is working
 
 ## Database Schema
 
@@ -89,15 +94,18 @@ Links games to platforms and tracks how you obtained each copy and in what forma
 - ✅ **Basic CRUD**: Create, read, update, delete games and platforms via REST API.
 - ✅ **SQLite persistence**: Data stored in `data/gamedb.sqlite`.
 - ✅ **Integration tests**: `scripts/db_integration_test.py` validates CRUD operations.
+- ✅ **Two main tabs**: "Games" (showing platforms each game is on) and "Platforms" (showing games on each platform)
+- ✅ **Summary cards**: Display games/platforms with key metadata, abililty to alter what is displayed under "dispaly" button.
+- ✅ **Filtering**: "Filter" button with ability to filter games by platform, tag, keyword (AND default or "exact match").
+- ✅ **Pills**: Smart pills on sumamry cards allow quickly applying filters or removing them.
 
 ### Planned (In Priority Order)
 
 1. **Browse & Filter** — View games and platforms in a Netflix-style scrollable interface with:
-   - Sortable columns (name, date added, platform count, etc.)
+   - Sortable columns (name, date added, platform count, etc.) - dropdown right now is a dummy
    - Pagination and lazy loading
-   - Filter by platform, tag, acquisition method, remake/remaster status
-   - Two main tabs: "Games" (showing platforms each game is on) and "Platforms" (showing games on each platform)
-   - Summary cards with key metadata
+   - IMPLEMENTED PARTIALLY: Filter by platform, tag, acquisition method, remake/remaster status
+   - 
 
 2. **Search & Autocomplete** — Fast search across games and platforms:
    - Autocomplete as you type (name, description, tags, platform names)

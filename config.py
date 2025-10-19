@@ -35,3 +35,8 @@ DATABASE_FILE = "data/gamedb.sqlite"
 
 # --- Application Settings ---
 APP_TITLE = "My Game Library"
+# Platform filter behavior: when True, multiple selected platforms require a
+# game to be present on ALL selected platforms (AND). When False, selecting
+# multiple platforms will show games that are present on ANY selected
+# platforms (OR). This can be overridden later via a user setting.
+PLATFORM_FILTER_AND = False
