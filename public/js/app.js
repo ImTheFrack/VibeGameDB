@@ -554,11 +554,24 @@ function applyFilters() {
     
     // Filter by keyword (name or description)
     if (currentFilters.keyword) {
-        const keyword = currentFilters.keyword.toLowerCase();
-        filtered = filtered.filter(game => 
-            game.name.toLowerCase().includes(keyword) ||
-            (game.description && game.description.toLowerCase().includes(keyword))
-        );
+        const raw = currentFilters.keyword.trim().toLowerCase();
+        if (raw.length > 0) {
+          const phraseMatch = raw.match(/^"(.*)"$/); // "exact phrase"
+          if (phraseMatch) {
+            const phrase = phraseMatch[1];
+            filtered = filtered.filter(game =>
+              (game.name && game.name.toLowerCase().includes(phrase)) ||
+              (game.description && game.description.toLowerCase().includes(phrase))
+            );
+          } else {
+            const words = raw.split(/\s+/).filter(Boolean);
+            filtered = filtered.filter(game => {
+              const hay = ((game.name || '') + ' ' + (game.description || '')).toLowerCase();
+              // All words must appear somewhere (AND)
+              return words.every(w => hay.includes(w));
+            });
+          }
+        }
     }
     
     // Filter by platforms
