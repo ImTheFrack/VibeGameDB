@@ -24,13 +24,14 @@ This repository contains a small Python stdlib HTTP server (`main.py`) which ser
 VibeGameDB stores your game library in two main tables:
 
 ### `platforms` table
-Represents physical or digital platforms you own (e.g., Steam, PlayStation 5, Nintendo Switch, GOG, Epic Games Store, etc.).
+Represents platforms you own (e.g., Steam, PlayStation 5, Nintendo Switch, GOG, Epic Games Store, etc.). A platform can support both digital and physical distribution.
 
 | Column | Type | Notes |
 |--------|------|-------|
-| `id` | INTEGER PRIMARY KEY | Unique platform identifier |
+| `id` | TEXT PRIMARY KEY | Unique platform identifier |
 | `name` | TEXT UNIQUE NOT NULL | Platform name (e.g., "Steam", "PS5") |
-| `type` | TEXT | "digital" or "physical" |
+| `supports_digital` | BOOLEAN | Whether this platform supports digital distribution |
+| `supports_physical` | BOOLEAN | Whether this platform supports physical distribution |
 | `icon_url` | TEXT | URL or path to platform icon |
 | `image_url` | TEXT | URL or path to platform image |
 | `description` | TEXT | Platform description or notes |
@@ -55,17 +56,25 @@ Represents games in your collection, with metadata and relationships to platform
 | `created_at` | TIMESTAMP | Record creation timestamp |
 | `updated_at` | TIMESTAMP | Record last update timestamp |
 
+**Note:** Games are linked to platforms via the `game_platforms` junction table (see below).
+
 ### `game_platforms` table (junction table)
-Links games to platforms and tracks how you obtained each copy.
+Links games to platforms and tracks how you obtained each copy and in what format.
 
 | Column | Type | Notes |
 |--------|------|-------|
 | `id` | INTEGER PRIMARY KEY | Unique record identifier |
 | `game_id` | INTEGER NOT NULL | Foreign key to `games` |
-| `platform_id` | INTEGER NOT NULL | Foreign key to `platforms` |
+| `platform_id` | TEXT NOT NULL | Foreign key to `platforms` |
+| `is_digital` | BOOLEAN | Whether this copy is digital (true) or physical (false) |
 | `acquisition_method` | TEXT | How you obtained it: "bought", "free", "bundle", "gift", "subscription", etc. |
 | `created_at` | TIMESTAMP | Record creation timestamp |
 | `updated_at` | TIMESTAMP | Record last update timestamp |
+
+**Constraints:**
+- If `is_digital = true`, the platform must have `supports_digital = true`.
+- If `is_digital = false`, the platform must have `supports_physical = true`.
+- A game can appear multiple times on the same platform if it has both digital and physical copies.
 
 **Constraints & Integrity:**
 - Every game must have at least one platform entry (no orphan games).

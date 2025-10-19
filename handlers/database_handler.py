@@ -44,14 +44,38 @@ CREATE TABLE IF NOT EXISTS games (
     description TEXT,
     cover_image_url TEXT,
     trailer_url TEXT,
-    platforms TEXT -- JSON array of platform ids/names
+    is_remake BOOLEAN DEFAULT 0,
+    is_remaster BOOLEAN DEFAULT 0,
+    related_game_id INTEGER,
+    tags TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS platforms (
     id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    type TEXT,
-    icon_url TEXT
+    name TEXT NOT NULL UNIQUE,
+    supports_digital BOOLEAN DEFAULT 1,
+    supports_physical BOOLEAN DEFAULT 0,
+    icon_url TEXT,
+    image_url TEXT,
+    description TEXT,
+    year_acquired INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS game_platforms (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    game_id INTEGER NOT NULL,
+    platform_id TEXT NOT NULL,
+    is_digital BOOLEAN NOT NULL,
+    acquisition_method TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE,
+    FOREIGN KEY (platform_id) REFERENCES platforms(id) ON DELETE CASCADE,
+    UNIQUE(game_id, platform_id, is_digital)
 );
 """
 
@@ -82,7 +106,12 @@ def _game_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
         'description': row['description'],
         'cover_image_url': row['cover_image_url'],
         'trailer_url': row['trailer_url'],
-        'platforms': json.loads(row['platforms']) if row['platforms'] else []
+        'is_remake': bool(row['is_remake']),
+        'is_remaster': bool(row['is_remaster']),
+        'related_game_id': row['related_game_id'],
+        'tags': json.loads(row['tags']) if row['tags'] else [],
+        'created_at': row['created_at'],
+        'updated_at': row['updated_at']
     }
 
 
@@ -90,8 +119,26 @@ def _platform_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
     return {
         'id': row['id'],
         'name': row['name'],
-        'type': row['type'],
-        'icon_url': row['icon_url']
+        'supports_digital': bool(row['supports_digital']),
+        'supports_physical': bool(row['supports_physical']),
+        'icon_url': row['icon_url'],
+        'image_url': row['image_url'],
+        'description': row['description'],
+        'year_acquired': row['year_acquired'],
+        'created_at': row['created_at'],
+        'updated_at': row['updated_at']
+    }
+
+
+def _game_platform_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
+    return {
+        'id': row['id'],
+        'game_id': row['game_id'],
+        'platform_id': row['platform_id'],
+        'is_digital': bool(row['is_digital']),
+        'acquisition_method': row['acquisition_method'],
+        'created_at': row['created_at'],
+        'updated_at': row['updated_at']
     }
 
 
@@ -121,12 +168,19 @@ def _create_game(conn: sqlite3.Connection, data: Dict[str, Any]):
     description = data.get('description')
     cover = data.get('cover_image_url')
     trailer = data.get('trailer_url')
-    platforms = data.get('platforms') or []
-    if not isinstance(platforms, list):
-        return (400, {'error': 'platforms must be a list'})
+    is_remake = bool(data.get('is_remake', False))
+    is_remaster = bool(data.get('is_remaster', False))
+    related_game_id = data.get('related_game_id')
+    tags = data.get('tags') or []
+    if not isinstance(tags, list):
+        return (400, {'error': 'tags must be a list'})
+    
     cur = conn.cursor()
-    cur.execute('INSERT INTO games (name,description,cover_image_url,trailer_url,platforms) VALUES (?,?,?,?,?)',
-                (name, description, cover, trailer, json.dumps(platforms)))
+    cur.execute(
+        'INSERT INTO games (name, description, cover_image_url, trailer_url, is_remake, is_remaster, related_game_id, tags) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        (name, description, cover, trailer, is_remake, is_remaster, related_game_id, json.dumps(tags))
+    )
     conn.commit()
     gid = cur.lastrowid
     cur.execute('SELECT * FROM games WHERE id = ?', (gid,))
@@ -142,17 +196,18 @@ def _update_game(conn: sqlite3.Connection, gid: int, data: Dict[str, Any]):
     # Build update
     fields = []
     params = []
-    for k in ('name', 'description', 'cover_image_url', 'trailer_url'):
+    for k in ('name', 'description', 'cover_image_url', 'trailer_url', 'is_remake', 'is_remaster', 'related_game_id'):
         if k in data:
             fields.append(f"{k} = ?")
             params.append(data[k])
-    if 'platforms' in data:
-        if not isinstance(data['platforms'], list):
-            return (400, {'error': 'platforms must be a list'})
-        fields.append('platforms = ?')
-        params.append(json.dumps(data['platforms']))
+    if 'tags' in data:
+        if not isinstance(data['tags'], list):
+            return (400, {'error': 'tags must be a list'})
+        fields.append('tags = ?')
+        params.append(json.dumps(data['tags']))
     if not fields:
         return (400, {'error': 'no fields to update'})
+    fields.append('updated_at = CURRENT_TIMESTAMP')
     params.append(gid)
     cur.execute(f'UPDATE games SET {",".join(fields)} WHERE id = ?', params)
     conn.commit()
@@ -182,17 +237,27 @@ def _create_platform(conn: sqlite3.Connection, data: Dict[str, Any]):
     name = data.get('name')
     if not name:
         return (400, {'error': 'name is required'})
-    platform_type = data.get('type', 'Digital')
+    supports_digital = bool(data.get('supports_digital', True))
+    supports_physical = bool(data.get('supports_physical', False))
+    
+    if not supports_digital and not supports_physical:
+        return (400, {'error': 'platform must support at least digital or physical'})
+    
     description = data.get('description')
     icon_url = data.get('icon_url')
+    image_url = data.get('image_url')
+    year_acquired = data.get('year_acquired')
     
     # Generate a simple ID from the name (lowercase, replace spaces with underscores)
     pid = name.lower().replace(' ', '_').replace('-', '_')
     
     cur = conn.cursor()
     try:
-        cur.execute('INSERT INTO platforms (id, name, type, icon_url) VALUES (?, ?, ?, ?)',
-                    (pid, name, platform_type, icon_url))
+        cur.execute(
+            'INSERT INTO platforms (id, name, supports_digital, supports_physical, icon_url, image_url, description, year_acquired) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            (pid, name, supports_digital, supports_physical, icon_url, image_url, description, year_acquired)
+        )
         conn.commit()
     except sqlite3.IntegrityError:
         return (400, {'error': 'platform already exists'})
@@ -211,7 +276,7 @@ def _update_platform(conn: sqlite3.Connection, pid: str, data: Dict[str, Any]):
     # Build update
     fields = []
     params = []
-    for k in ('name', 'type', 'icon_url'):
+    for k in ('name', 'supports_digital', 'supports_physical', 'icon_url', 'image_url', 'description', 'year_acquired'):
         if k in data:
             fields.append(f"{k} = ?")
             params.append(data[k])
@@ -219,6 +284,7 @@ def _update_platform(conn: sqlite3.Connection, pid: str, data: Dict[str, Any]):
     if not fields:
         return (400, {'error': 'no fields to update'})
     
+    fields.append('updated_at = CURRENT_TIMESTAMP')
     params.append(pid)
     cur.execute(f'UPDATE platforms SET {",".join(fields)} WHERE id = ?', params)
     conn.commit()
@@ -232,6 +298,113 @@ def _delete_platform(conn: sqlite3.Connection, pid: str):
     if not cur.fetchone():
         return (404, {'error': 'not found'})
     cur.execute('DELETE FROM platforms WHERE id = ?', (pid,))
+    conn.commit()
+    return (200, {'status': 'deleted'})
+
+
+def _list_game_platforms(conn: sqlite3.Connection, qparams: Dict[str, List[str]]):
+    """List game-platform links, optionally filtered by game_id or platform_id."""
+    cur = conn.cursor()
+    
+    # Support filtering by game_id or platform_id
+    if 'game_id' in qparams and qparams['game_id']:
+        try:
+            gid = int(qparams['game_id'][0])
+        except Exception:
+            return (400, {'error': 'invalid game_id'})
+        cur.execute('SELECT * FROM game_platforms WHERE game_id = ? ORDER BY platform_id', (gid,))
+    elif 'platform_id' in qparams and qparams['platform_id']:
+        pid = qparams['platform_id'][0]
+        cur.execute('SELECT * FROM game_platforms WHERE platform_id = ? ORDER BY game_id', (pid,))
+    else:
+        cur.execute('SELECT * FROM game_platforms ORDER BY game_id, platform_id')
+    
+    rows = cur.fetchall()
+    return {'game_platforms': [_game_platform_row_to_dict(r) for r in rows]}
+
+
+def _create_game_platform(conn: sqlite3.Connection, data: Dict[str, Any]):
+    """Link a game to a platform with a specific format (digital/physical)."""
+    game_id = data.get('game_id')
+    platform_id = data.get('platform_id')
+    is_digital = data.get('is_digital')
+    acquisition_method = data.get('acquisition_method')
+    
+    if game_id is None:
+        return (400, {'error': 'game_id is required'})
+    if platform_id is None:
+        return (400, {'error': 'platform_id is required'})
+    if is_digital is None:
+        return (400, {'error': 'is_digital is required (true for digital, false for physical)'})
+    
+    is_digital = bool(is_digital)
+    
+    cur = conn.cursor()
+    
+    # Verify game exists
+    cur.execute('SELECT 1 FROM games WHERE id = ?', (game_id,))
+    if not cur.fetchone():
+        return (404, {'error': 'game not found'})
+    
+    # Verify platform exists
+    cur.execute('SELECT supports_digital, supports_physical FROM platforms WHERE id = ?', (platform_id,))
+    platform = cur.fetchone()
+    if not platform:
+        return (404, {'error': 'platform not found'})
+    
+    # Validate that platform supports the requested format
+    if is_digital and not platform['supports_digital']:
+        return (400, {'error': f'platform {platform_id} does not support digital distribution'})
+    if not is_digital and not platform['supports_physical']:
+        return (400, {'error': f'platform {platform_id} does not support physical distribution'})
+    
+    try:
+        cur.execute(
+            'INSERT INTO game_platforms (game_id, platform_id, is_digital, acquisition_method) VALUES (?, ?, ?, ?)',
+            (game_id, platform_id, is_digital, acquisition_method)
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        return (400, {'error': 'this game-platform-format combination already exists'})
+    
+    gp_id = cur.lastrowid
+    cur.execute('SELECT * FROM game_platforms WHERE id = ?', (gp_id,))
+    row = cur.fetchone()
+    return {'game_platform': _game_platform_row_to_dict(row)}
+
+
+def _update_game_platform(conn: sqlite3.Connection, gp_id: int, data: Dict[str, Any]):
+    """Update a game-platform link."""
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM game_platforms WHERE id = ?', (gp_id,))
+    if not cur.fetchone():
+        return (404, {'error': 'not found'})
+    
+    fields = []
+    params = []
+    for k in ('acquisition_method',):
+        if k in data:
+            fields.append(f"{k} = ?")
+            params.append(data[k])
+    
+    if not fields:
+        return (400, {'error': 'no fields to update'})
+    
+    fields.append('updated_at = CURRENT_TIMESTAMP')
+    params.append(gp_id)
+    cur.execute(f'UPDATE game_platforms SET {",".join(fields)} WHERE id = ?', params)
+    conn.commit()
+    cur.execute('SELECT * FROM game_platforms WHERE id = ?', (gp_id,))
+    return {'game_platform': _game_platform_row_to_dict(cur.fetchone())}
+
+
+def _delete_game_platform(conn: sqlite3.Connection, gp_id: int):
+    """Remove a game-platform link."""
+    cur = conn.cursor()
+    cur.execute('SELECT 1 FROM game_platforms WHERE id = ?', (gp_id,))
+    if not cur.fetchone():
+        return (404, {'error': 'not found'})
+    cur.execute('DELETE FROM game_platforms WHERE id = ?', (gp_id,))
     conn.commit()
     return (200, {'status': 'deleted'})
 
@@ -300,6 +473,35 @@ def handle(req: Dict[str, Any]):
             if method == 'DELETE' and len(parts) >= 2:
                 pid = parts[1]
                 return _delete_platform(conn, pid)
+            
+            return (405, {'error': 'method not allowed'})
+
+        if sp.startswith('game_platforms'):
+            # Possible forms: /game_platforms, /game_platforms/<id>
+            parts = sp.split('/') if sp else []
+            method = parsed.get('method', 'GET')
+            if method == 'GET':
+                return _list_game_platforms(conn, parsed.get('query', {}))
+            if method == 'POST' and (len(parts) == 1 or parts == ['game_platforms']):
+                body = parsed.get('json')
+                if body is None:
+                    return (400, {'error': 'invalid or missing JSON body'})
+                return _create_game_platform(conn, body)
+            if method in ('PUT', 'PATCH') and len(parts) >= 2:
+                try:
+                    gp_id = int(parts[1])
+                except Exception:
+                    return (400, {'error': 'invalid id'})
+                body = parsed.get('json')
+                if body is None:
+                    return (400, {'error': 'invalid or missing JSON body'})
+                return _update_game_platform(conn, gp_id, body)
+            if method == 'DELETE' and len(parts) >= 2:
+                try:
+                    gp_id = int(parts[1])
+                except Exception:
+                    return (400, {'error': 'invalid id'})
+                return _delete_game_platform(conn, gp_id)
             
             return (405, {'error': 'method not allowed'})
 

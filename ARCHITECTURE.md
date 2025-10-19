@@ -186,7 +186,10 @@ User sees new platform in the list
   "description": "A story-driven, open world RPG",
   "cover_image_url": "https://example.com/cover.jpg",
   "trailer_url": "https://example.com/trailer.mp4",
-  "platforms": ["steam", "gog"]
+  "is_remake": false,
+  "is_remaster": false,
+  "related_game_id": null,
+  "tags": ["action", "RPG", "sci-fi"]
 }
 ```
 
@@ -199,7 +202,12 @@ User sees new platform in the list
     "description": "A story-driven, open world RPG",
     "cover_image_url": "https://example.com/cover.jpg",
     "trailer_url": "https://example.com/trailer.mp4",
-    "platforms": ["steam", "gog"]
+    "is_remake": false,
+    "is_remaster": false,
+    "related_game_id": null,
+    "tags": ["action", "RPG", "sci-fi"],
+    "created_at": "2025-01-15T10:30:00",
+    "updated_at": "2025-01-15T10:30:00"
   }
 }
 ```
@@ -210,8 +218,12 @@ User sees new platform in the list
 ```json
 {
   "name": "Steam",
-  "type": "Digital",
-  "icon_url": "https://example.com/steam.png"
+  "supports_digital": true,
+  "supports_physical": false,
+  "icon_url": "https://example.com/steam.png",
+  "image_url": "https://example.com/steam-banner.jpg",
+  "description": "Valve's digital distribution platform",
+  "year_acquired": 2015
 }
 ```
 
@@ -221,8 +233,41 @@ User sees new platform in the list
   "platform": {
     "id": "steam",
     "name": "Steam",
-    "type": "Digital",
-    "icon_url": "https://example.com/steam.png"
+    "supports_digital": true,
+    "supports_physical": false,
+    "icon_url": "https://example.com/steam.png",
+    "image_url": "https://example.com/steam-banner.jpg",
+    "description": "Valve's digital distribution platform",
+    "year_acquired": 2015,
+    "created_at": "2025-01-15T10:30:00",
+    "updated_at": "2025-01-15T10:30:00"
+  }
+}
+```
+
+### POST /plugins/database_handler/game_platforms
+
+**Request:**
+```json
+{
+  "game_id": 1,
+  "platform_id": "steam",
+  "is_digital": true,
+  "acquisition_method": "bought"
+}
+```
+
+**Response (200):**
+```json
+{
+  "game_platform": {
+    "id": 1,
+    "game_id": 1,
+    "platform_id": "steam",
+    "is_digital": true,
+    "acquisition_method": "bought",
+    "created_at": "2025-01-15T10:30:00",
+    "updated_at": "2025-01-15T10:30:00"
   }
 }
 ```
