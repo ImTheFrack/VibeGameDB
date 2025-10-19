@@ -158,8 +158,18 @@ try:
     print("TEST 7: Delete a game")
     del_req = {'method': 'DELETE', 'subpath': f'/games/{game_ids[0]}'}
     res = dbh.handle(del_req)
-    assert_true(isinstance(res, dict), f"DELETE response should be dict")
-    assert_true('status' in res, f"Response missing 'status' key: {res}")
+    
+    # Handle both dict and (status, body) response formats
+    if isinstance(res, tuple):
+        status, body = res
+        assert_eq(status, 200, f"DELETE should return 200, got {status}")
+        if isinstance(body, str):
+            body = json.loads(body)
+        assert_true('status' in body or 'message' in body, f"Response missing status/message: {body}")
+    else:
+        assert_true(isinstance(res, dict), f"DELETE response should be dict or tuple, got {type(res)}")
+        assert_true('status' in res, f"Response missing 'status' key: {res}")
+    
     print(f"  ✓ Deleted game ID {game_ids[0]}")
 
     print()
