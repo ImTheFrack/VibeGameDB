@@ -20,6 +20,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalImport = document.getElementById('modal-import');
     const formGame = document.getElementById('form-game');
     const formPlatform = document.getElementById('form-platform');
+    const platformFiltersContainer = document.querySelector('.platform-filters');
+
+    // State: track current filter and all games
+    let currentPlatformFilter = 'all';
+    let allGames = [];
 
     // ----------------------
     // Modal Management
@@ -145,6 +150,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             closeModal(modalPlatform);
+            await populatePlatformFilters();  // Refresh filter buttons
             fetchPlatforms();
         } catch (err) {
             console.error('Form submission error:', err);
@@ -171,8 +177,20 @@ document.addEventListener('DOMContentLoaded', () => {
         if (editPlatform) return console.log('Edit platform clicked (template)');
     });
 
-    // Initial load: fetch games to populate the UI
-    fetchGames();
+    // Wire up "All" filter button
+    const allFilterBtn = platformFiltersContainer.querySelector('[data-platform="all"]');
+    if (allFilterBtn) {
+        allFilterBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            filterGamesByPlatform('all');
+        });
+    }
+
+    // Initial load: fetch platforms, populate filters, then fetch games
+    (async () => {
+        await populatePlatformFilters();
+        fetchGames();
+    })();
 });
 
 // ----------------------
@@ -195,7 +213,11 @@ async function apiGet(path) {
 async function fetchGames() {
     // Endpoint matches plugin loader mapping in main.py
     const data = await apiGet('/plugins/database_handler/games');
-    if (data) renderGames(data.games || []);
+    if (data) {
+        allGames = data.games || [];
+        // Apply current filter
+        filterGamesByPlatform(currentPlatformFilter);
+    }
 }
 
 // Fetch list of platforms from the backend plugin
@@ -220,6 +242,60 @@ async function populatePlatformsDropdown() {
         option.textContent = p.name;
         platformSelect.appendChild(option);
     });
+}
+
+// Populate platform filter buttons from database
+async function populatePlatformFilters() {
+    const data = await apiGet('/plugins/database_handler/platforms');
+    if (!data) return;
+    
+    const platformFiltersContainer = document.querySelector('.platform-filters');
+    if (!platformFiltersContainer) return;
+    
+    // Clear existing buttons except "All"
+    const existingButtons = platformFiltersContainer.querySelectorAll('.filter-btn');
+    existingButtons.forEach(btn => {
+        if (btn.getAttribute('data-platform') !== 'all') {
+            btn.remove();
+        }
+    });
+    
+    // Add buttons for each platform
+    const platforms = data.platforms || [];
+    platforms.forEach(p => {
+        const btn = document.createElement('button');
+        btn.className = 'filter-btn';
+        btn.setAttribute('data-platform', p.id || p.name);
+        btn.textContent = p.name;
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            filterGamesByPlatform(p.id || p.name);
+        });
+        platformFiltersContainer.appendChild(btn);
+    });
+}
+
+// Filter games by selected platform
+function filterGamesByPlatform(platformId) {
+    currentPlatformFilter = platformId;
+    
+    // Update active button
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-platform') === platformId);
+    });
+    
+    // Filter and re-render games
+    if (platformId === 'all') {
+        renderGames(allGames);
+    } else {
+        const filtered = allGames.filter(game => {
+            const gamePlatforms = game.platforms || [];
+            return gamePlatforms.some(p => 
+                (typeof p === 'string' ? p : p.id || p.name) === platformId
+            );
+        });
+        renderGames(filtered);
+    }
 }
 
 // ----------------------
