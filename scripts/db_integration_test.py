@@ -245,8 +245,14 @@ try:
     print("TEST 10: Delete a game_platform link")
     del_req = {'method': 'DELETE', 'subpath': f'/game_platforms/{gp_ids[0]}'}
     res = dbh.handle(del_req)
-    assert_true(isinstance(res, dict), f"DELETE response should be dict, got {type(res)}")
-    assert_true('status' in res, f"Response missing 'status' key: {res}")
+    # Handle both dict and (status, body) response formats
+    if isinstance(res, tuple):
+        status, body = res
+        assert_eq(status, 200, f"DELETE should return 200, got {status}")
+        assert_true('status' in body, f"Response missing 'status' key: {body}")
+    else:
+        assert_true(isinstance(res, dict), f"DELETE response should be dict or tuple, got {type(res)}")
+        assert_true('status' in res, f"Response missing 'status' key: {res}")
     print(f"  ✓ Deleted game_platform link ID {gp_ids[0]}")
 
     print()
@@ -255,7 +261,12 @@ try:
     print("TEST 11: Delete a game (cascade delete)")
     del_req = {'method': 'DELETE', 'subpath': f'/games/{game_ids[0]}'}
     res = dbh.handle(del_req)
-    assert_true(isinstance(res, dict), f"DELETE game response should be dict, got {type(res)}")
+    # Handle both dict and (status, body) response formats
+    if isinstance(res, tuple):
+        status, body = res
+        assert_eq(status, 200, f"DELETE should return 200, got {status}")
+    else:
+        assert_true(isinstance(res, dict), f"DELETE response should be dict or tuple, got {type(res)}")
     print(f"  ✓ Deleted game ID {game_ids[0]}")
 
     print()
