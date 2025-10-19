@@ -76,6 +76,10 @@ body{
 .inline-radios label{display:inline-flex;align-items:center;gap:6px;margin:0}
 .inline-radios input[type="radio"]{width:auto;padding:0;margin:0}
 #platform-radio-group,#format-checkbox-group{display:flex;gap:12px;flex-wrap:wrap}
+.filter-checkboxes{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;padding:10px 0}
+.filter-checkboxes label{display:flex;align-items:center;gap:6px;margin:0}
+.filter-checkboxes input[type="checkbox"]{width:auto;padding:0;margin:0}
+.active-filters{display:inline-block;margin-left:12px;color:var(--muted);font-size:12px}
 .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
 
 /* Small screens */

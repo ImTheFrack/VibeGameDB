@@ -55,15 +55,9 @@
                     </select>
                 </div>
 
-                <div class="right-controls">
-                    <span class="filter-label">Filter by Platform:</span>
-                    <div class="platform-filters">
-                        <!-- These are placeholders; JS should populate actual platform list -->
-                        <button class="filter-btn active" data-platform="all">All</button>
-                        <button class="filter-btn" data-platform="Steam">Steam</button>
-                        <button class="filter-btn" data-platform="PS5">PS5</button>
-                        <button class="filter-btn" data-platform="Switch">Switch</button>
-                    </div>
+                <div class="right-controls" id="games-controls">
+                    <button id="btn-filter" class="btn btn-sm">🔍 Filter</button>
+                    <span id="active-filters" class="active-filters"></span>
                 </div>
             </section>
 
@@ -212,6 +206,42 @@
                     <button class="btn" data-close>Close</button>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Filter Modal -->
+    <div id="modal-filter" class="modal" aria-hidden="true">
+        <div class="modal-content">
+            <header class="modal-header">
+                <h2>Filter Games</h2>
+                <button class="modal-close" data-close>&times;</button>
+            </header>
+            <form id="form-filter" class="modal-form">
+                <div>
+                    <label>Search by Name or Keyword</label>
+                    <input type="text" id="filter-keyword" placeholder="e.g., Zelda, action, RPG...">
+                </div>
+
+                <div>
+                    <label>Filter by Platform</label>
+                    <div id="filter-platforms" class="filter-checkboxes">
+                        <!-- JS will populate platform checkboxes -->
+                    </div>
+                </div>
+
+                <div>
+                    <label>Filter by Tags</label>
+                    <div id="filter-tags" class="filter-checkboxes">
+                        <!-- JS will populate tag checkboxes -->
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="submit" class="btn btn-primary">Apply Filters</button>
+                    <button type="button" id="btn-clear-filters" class="btn">Clear All</button>
+                    <button type="button" class="btn" data-close>Close</button>
+                </div>
+            </form>
         </div>
     </div>
 

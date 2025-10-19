@@ -10,12 +10,19 @@
 // ----------------------
 // Global State
 // ----------------------
-let currentPlatformFilter = 'all';  // Currently selected filter
 let allGames = [];                  // All games from database
 let allPlatforms = [];              // All platforms from database
 let allGamePlatforms = [];          // All game-platform links
 let currentTab = 'games';           // Currently active tab
 let currentGameId = null;           // Track which game we're adding to a platform
+let allTags = [];                   // All unique tags from games
+
+// Filter state
+let currentFilters = {
+    keyword: '',
+    platforms: [],
+    tags: []
+};
 
 // Ensure DOM is ready before running any code that touches elements.
 document.addEventListener('DOMContentLoaded', () => {
@@ -29,10 +36,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalPlatform = document.getElementById('modal-platform');
     const modalImport = document.getElementById('modal-import');
     const modalAddToPlatform = document.getElementById('modal-add-to-platform');
+    const modalFilter = document.getElementById('modal-filter');
     const formGame = document.getElementById('form-game');
     const formPlatform = document.getElementById('form-platform');
     const formAddToPlatform = document.getElementById('form-add-to-platform');
-    const platformFiltersContainer = document.querySelector('.platform-filters');
+    const formFilter = document.getElementById('form-filter');
+    const btnFilter = document.getElementById('btn-filter');
+    const gamesControls = document.getElementById('games-controls');
 
     // ----------------------
     // Modal Management
@@ -57,7 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Close modal when clicking outside the modal-content
-    [modalGame, modalPlatform, modalImport, modalAddToPlatform].forEach(modal => {
+    [modalGame, modalPlatform, modalImport, modalAddToPlatform, modalFilter].forEach(modal => {
         modal.addEventListener('click', (e) => {
             if (e.target === modal) closeModal(modal);
         });
@@ -285,17 +295,72 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Tab switching behavior (simple client-only for now)
+    // Tab switching behavior
     tabs.forEach(tab => {
         tab.addEventListener('click', (e) => {
             const target = e.currentTarget.getAttribute('data-tab');
             console.log('Switching tab to', target);
             currentTab = target;  // Track current tab
             tabs.forEach(t => t.classList.toggle('active', t === tab));
-            // TODO: call fetchGames() or fetchPlatforms() depending on target
+            
+            // Show/hide filter button based on tab
+            if (gamesControls) {
+                gamesControls.style.display = target === 'games' ? 'flex' : 'none';
+            }
+            
             if (target === 'games') fetchGames(); else fetchPlatforms();
         });
     });
+
+    // Filter button handler
+    if (btnFilter) {
+        btnFilter.addEventListener('click', async () => {
+            await populateFilterModal();
+            openModal(modalFilter);
+        });
+    }
+
+    // Filter form submission
+    if (formFilter) {
+        formFilter.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            // Get keyword
+            const keyword = document.getElementById('filter-keyword').value.toLowerCase();
+            
+            // Get selected platforms
+            const platformCheckboxes = document.querySelectorAll('#filter-platforms input[type="checkbox"]:checked');
+            const platforms = Array.from(platformCheckboxes).map(cb => cb.value);
+            
+            // Get selected tags
+            const tagCheckboxes = document.querySelectorAll('#filter-tags input[type="checkbox"]:checked');
+            const tags = Array.from(tagCheckboxes).map(cb => cb.value);
+            
+            // Update filter state
+            currentFilters = { keyword, platforms, tags };
+            
+            // Apply filters
+            applyFilters();
+            
+            // Close modal
+            closeModal(modalFilter);
+            updateActiveFiltersDisplay();
+        });
+    }
+
+    // Clear filters button
+    const btnClearFilters = document.getElementById('btn-clear-filters');
+    if (btnClearFilters) {
+        btnClearFilters.addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('filter-keyword').value = '';
+            document.querySelectorAll('#filter-platforms input[type="checkbox"]').forEach(cb => cb.checked = false);
+            document.querySelectorAll('#filter-tags input[type="checkbox"]').forEach(cb => cb.checked = false);
+            currentFilters = { keyword: '', platforms: [], tags: [] };
+            applyFilters();
+            updateActiveFiltersDisplay();
+        });
+    }
 
     // Delegate edit buttons inside the display grid
     displayGrid.addEventListener('click', async (e) => {
@@ -350,8 +415,13 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Error checking/seeding database:', err);
         }
         
-        // Now load the data
-        await populatePlatformFilters();
+        // Fetch platforms first
+        const platformData = await apiGet('/plugins/database_handler/platforms');
+        if (platformData) {
+            allPlatforms = platformData.platforms || [];
+        }
+        
+        // Now load the games
         fetchGames();
     })();
 });
@@ -380,9 +450,23 @@ async function fetchGames() {
         allGames = data.games || [];
         // Also fetch game-platform links
         await fetchGamePlatforms();
-        // Apply current filter
-        filterGamesByPlatform(currentPlatformFilter);
+        // Extract all unique tags
+        extractAllTags();
+        // Apply current filters
+        applyFilters();
+        updateActiveFiltersDisplay();
     }
+}
+
+// Extract all unique tags from all games
+function extractAllTags() {
+    const tagSet = new Set();
+    allGames.forEach(game => {
+        if (game.tags && Array.isArray(game.tags)) {
+            game.tags.forEach(tag => tagSet.add(tag));
+        }
+    });
+    allTags = Array.from(tagSet).sort();
 }
 
 // Fetch game-platform links
@@ -402,59 +486,93 @@ async function fetchPlatforms() {
     }
 }
 
-// Populate platform filter buttons from database
-async function populatePlatformFilters() {
-    const data = await apiGet('/plugins/database_handler/platforms');
-    if (!data) return;
-    
-    const platformFiltersContainer = document.querySelector('.platform-filters');
-    if (!platformFiltersContainer) return;
-    
-    // Clear existing buttons except "All"
-    const existingButtons = platformFiltersContainer.querySelectorAll('.filter-btn');
-    existingButtons.forEach(btn => {
-        if (btn.getAttribute('data-platform') !== 'all') {
-            btn.remove();
-        }
-    });
-    
-    // Add buttons for each platform
-    const platforms = data.platforms || [];
-    platforms.forEach(p => {
-        const btn = document.createElement('button');
-        btn.className = 'filter-btn';
-        btn.setAttribute('data-platform', p.id || p.name);
-        btn.textContent = p.name;
-        btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            filterGamesByPlatform(p.id || p.name);
+// Populate the filter modal with available options
+async function populateFilterModal() {
+    // Populate platforms
+    const platformsContainer = document.getElementById('filter-platforms');
+    if (platformsContainer) {
+        platformsContainer.innerHTML = '';
+        allPlatforms.forEach(p => {
+            const label = document.createElement('label');
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.value = p.id;
+            input.checked = currentFilters.platforms.includes(p.id);
+            label.appendChild(input);
+            label.appendChild(document.createTextNode(p.name));
+            platformsContainer.appendChild(label);
         });
-        platformFiltersContainer.appendChild(btn);
-    });
+    }
+    
+    // Populate tags
+    const tagsContainer = document.getElementById('filter-tags');
+    if (tagsContainer) {
+        tagsContainer.innerHTML = '';
+        allTags.forEach(tag => {
+            const label = document.createElement('label');
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.value = tag;
+            input.checked = currentFilters.tags.includes(tag);
+            label.appendChild(input);
+            label.appendChild(document.createTextNode(tag));
+            tagsContainer.appendChild(label);
+        });
+    }
+    
+    // Set keyword
+    const keywordInput = document.getElementById('filter-keyword');
+    if (keywordInput) {
+        keywordInput.value = currentFilters.keyword;
+    }
 }
 
-// Filter games by selected platform
-function filterGamesByPlatform(platformId) {
-    currentPlatformFilter = platformId;
-    
-    // Update active button
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.getAttribute('data-platform') === platformId);
-    });
-    
-    // Only render games if we're on the Games tab
+// Apply current filters to games
+function applyFilters() {
     if (currentTab !== 'games') return;
     
-    // Filter and re-render games
-    if (platformId === 'all') {
-        renderGames(allGames);
-    } else {
-        const filtered = allGames.filter(game => {
-            // Check if this game has any game_platforms entries for the selected platform
-            return allGamePlatforms.some(gp => gp.game_id === game.id && gp.platform_id === platformId);
-        });
-        renderGames(filtered);
+    let filtered = allGames;
+    
+    // Filter by keyword (name or description)
+    if (currentFilters.keyword) {
+        const keyword = currentFilters.keyword.toLowerCase();
+        filtered = filtered.filter(game => 
+            game.name.toLowerCase().includes(keyword) ||
+            (game.description && game.description.toLowerCase().includes(keyword))
+        );
     }
+    
+    // Filter by platforms
+    if (currentFilters.platforms.length > 0) {
+        filtered = filtered.filter(game => {
+            return currentFilters.platforms.some(platformId =>
+                allGamePlatforms.some(gp => gp.game_id === game.id && gp.platform_id === platformId)
+            );
+        });
+    }
+    
+    // Filter by tags
+    if (currentFilters.tags.length > 0) {
+        filtered = filtered.filter(game => {
+            const gameTags = game.tags || [];
+            return currentFilters.tags.some(tag => gameTags.includes(tag));
+        });
+    }
+    
+    renderGames(filtered);
+}
+
+// Update the active filters display
+function updateActiveFiltersDisplay() {
+    const activeFiltersEl = document.getElementById('active-filters');
+    if (!activeFiltersEl) return;
+    
+    const parts = [];
+    if (currentFilters.keyword) parts.push(`"${currentFilters.keyword}"`);
+    if (currentFilters.platforms.length > 0) parts.push(`${currentFilters.platforms.length} platform(s)`);
+    if (currentFilters.tags.length > 0) parts.push(`${currentFilters.tags.length} tag(s)`);
+    
+    activeFiltersEl.textContent = parts.length > 0 ? `Active: ${parts.join(', ')}` : '';
 }
 
 // Populate the "Add to Platform" form with available platforms
