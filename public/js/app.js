@@ -584,14 +584,27 @@ function applyFilters() {
 // Update the active filters display
 function updateActiveFiltersDisplay() {
     const activeFiltersEl = document.getElementById('active-filters');
-    if (!activeFiltersEl) return;
-    
-    const parts = [];
-    if (currentFilters.keyword) parts.push(`"${currentFilters.keyword}"`);
-    if (currentFilters.platforms.length > 0) parts.push(`${currentFilters.platforms.length} platform(s)`);
-    if (currentFilters.tags.length > 0) parts.push(`${currentFilters.tags.length} tag(s)`);
-    
-    activeFiltersEl.textContent = parts.length > 0 ? `Active: ${parts.join(', ')}` : '';
+    const btn = document.getElementById('btn-filter');
+
+    // Count active filters: keyword counts as 1, plus selected platforms and tags
+    let count = 0;
+    if (currentFilters.keyword) count += 1;
+    if (Array.isArray(currentFilters.platforms)) count += currentFilters.platforms.length;
+    if (Array.isArray(currentFilters.tags)) count += currentFilters.tags.length;
+
+    // Update Filter button label and visual state
+    if (btn) {
+        if (count > 0) {
+            btn.textContent = `🔍 Filter (${count})`;
+            btn.classList.add('filters-on');
+        } else {
+            btn.textContent = '🔍 Filter';
+            btn.classList.remove('filters-on');
+        }
+    }
+
+    // Keep the legacy active-filters element empty (we now show count on button)
+    if (activeFiltersEl) activeFiltersEl.textContent = '';
 }
 
 // Populate the "Add to Platform" form with available platforms

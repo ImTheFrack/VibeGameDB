@@ -82,6 +82,10 @@ body{
 .active-filters{display:inline-block;margin-left:12px;color:var(--muted);font-size:12px}
 .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
 
+/* Visual state when filters are active */
+.filters-on{background:var(--text);color:var(--bg);border-color:var(--text)}
+.filters-on:hover{box-shadow:0 6px 18px rgba(0,0,0,0.6);transform:none}
+
 /* Small screens */
 @media (max-width:640px){
     .header-controls{flex-direction:column;align-items:stretch}
