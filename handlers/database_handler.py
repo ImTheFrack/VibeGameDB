@@ -24,23 +24,27 @@ except Exception:
     config = None
 
 
+# Replace cover/icon URLs to local placeholders and wrap returned lists in dicts
+
 def _sample_games():
     """Return a small list of sample game dicts used by the frontend while
-the real DB layer is implemented.
+    the real DB layer is implemented.
     """
     return [
         {
             "id": 1,
             "name": "Cyberpunk 2077",
             "description": "A story-driven, open world RPG set in Night City.",
-            "cover_image_url": "https://via.placeholder.com/240x135.png?text=Cyberpunk",
+            # Use a local placeholder image so the app works offline / without
+            # depending on external placeholder services which can fail.
+            "cover_image_url": "/img/cover_placeholder.svg",
             "platforms": ["Steam", "GOG"]
         },
         {
             "id": 2,
             "name": "Hades",
             "description": "A rogue-like dungeon crawler with fast-paced combat.",
-            "cover_image_url": "https://via.placeholder.com/240x135.png?text=Hades",
+            "cover_image_url": "/img/cover_placeholder.svg",
             "platforms": ["Steam", "Switch"]
         }
     ]
@@ -54,8 +58,8 @@ def _sample_platforms():
     example data and URLs.
     """
     return [
-        {"id": "steam", "name": "Steam", "type": "Digital", "icon_url": "https://via.placeholder.com/64?text=Steam", "count": 52},
-        {"id": "switch", "name": "Nintendo Switch", "type": "Physical/Digital", "icon_url": "https://via.placeholder.com/64?text=Switch", "count": 18},
+        {"id": "steam", "name": "Steam", "type": "Digital", "icon_url": "/img/icon_placeholder.svg", "count": 52},
+        {"id": "switch", "name": "Nintendo Switch", "type": "Physical/Digital", "icon_url": "/img/icon_placeholder.svg", "count": 18},
     ]
 
 
@@ -85,11 +89,13 @@ def handle(req: Dict[str, Any]):
     sp = subpath.lstrip('/')
 
     if sp == 'games':
-        # Return sample games as JSON; the server will convert dict to JSON.
-        return _sample_games()
+        # Return sample games wrapped in a dict so the plugin loader treats
+        # the return value as a JSON object (200). Returning a raw list can be
+        # misinterpreted by the loader as a (status, body) tuple.
+        return {"games": _sample_games()}
 
     if sp == 'platforms':
-        return _sample_platforms()
+        return {"platforms": _sample_platforms()}
 
     # Unknown path: return 404 status and a small JSON body explaining the issue.
     return (404, {"status": "error", "message": f"Unknown subpath: {subpath}"})
