@@ -1,15 +1,31 @@
 ## Purpose
 Short, actionable guidance for AI coding agents working on this repository (VibeGameDB).
 
-Keep edits minimal and idiomatic: this is a tiny, single-file Python HTTP service implemented using the stdlib.
-
-## Quick repo summary (big picture)
-- Single-process HTTP service implemented in `main.py` using `http.server.ThreadingHTTPServer` and a `RequestHandler` subclass.
-- Endpoints: `/` (HTML landing), `/health` (GET -> JSON {"status":"ok"}), `/echo` (GET query `?msg=...` -> JSON, POST JSON body -> echoes JSON). HEAD is implemented for these paths.
-- No external dependencies; everything uses Python standard library.
+This repo is now a small web application skeleton: a tiny Python stdlib web server (`main.py`) that serves
+static files from `public/` and a plugin system that loads Python modules from `handlers/` and exposes them
+under `/plugins/<name>`. The frontend SPA shell lives in `public/` and fetches example data from the plugin
+endpoints so the repository can be run locally without external dependencies.
 
 Additional note: the server includes a minimal plugin loader that loads Python
 modules from a local `handlers/` directory and exposes them under `/plugins/<name>`.
+
+New project structure you should know about:
+
+```
+/
+├── public/                  # Static files (DOC_ROOT) - SPA shell, CSS, JS, images
+│   ├── index.html           # SPA shell (header, tabs, controls, modals)
+│   ├── css/style.css        # Dark theme styles
+│   ├── js/app.js            # Frontend behavior stubs and fetch calls
+│   └── img/                 # Local placeholder images
+├── handlers/                # Python plugin modules
+│   ├── database_handler.py  # CRUD API stubs for games/platforms (returns sample JSON)
+│   ├── import_handler.py    # CSV import placeholder
+│   └── ai_handler.py        # AI enrichment placeholder (uses config.AI_ENDPOINT_URL)
+├── data/                    # Data storage (empty placeholder)
+├── config.py                # Central configuration (AI endpoint, DB path, app title)
+├── main.py                  # Server and plugin loader (unchanged core behavior)
+```
 
 ## Important implementation notes / patterns to preserve
 - Centralized response helper: `_send(status, body, content_type, extra_headers)` — use this to set Content-Type and Content-Length consistently.
@@ -19,9 +35,14 @@ modules from a local `handlers/` directory and exposes them under `/plugins/<nam
 - Concurrency: `ThreadingHTTPServer` is used. Keep handlers thread-safe (no shared mutable globals without locking).
 - Logging: `log_message` is overridden to print compact logs to stdout. Follow this approach for consistent console output.
 
+Frontend notes:
+- `public/index.html` is a single page application shell wired to `public/js/app.js`.
+- `app.js` performs initial fetch to `/plugins/database_handler/games` and `/plugins/database_handler/platforms` (see TODO below).
+- Example cards in `index.html` use local SVG placeholders from `public/img/` to avoid external DNS or placeholder service failures.
+
 ## Files to inspect when making changes
-- `main.py` — entire application. All routes and helper functions live here.
-- `README.md` — project description (very small).
+- `main.py` — entire server and plugin loader.
+- `README.md` — updated project description and run instructions.
 
 Optional: `handlers/` — place example plugin modules here; the loader looks for `handlers/<name>.py`.
 
@@ -61,14 +82,16 @@ curl -X POST -H "Content-Type: application/json" -d '{"name":"alice"}' http://lo
 - Avoid changing the server bootstrap unless adding a CLI or config file; prefer environment variables for runtime overrides.
 - Keep changes small and testable: add a unit-level test script or small integration test that starts the server on an ephemeral port and exercises endpoints.
 
-Plugin loader (what to know when editing)
+When adding or modifying frontend behavior, update `public/js/app.js` and add any new static assets under `public/` so they are served by the doc root.
+
+## Plugin loader (what to know when editing)
 
 - The loader looks for modules at `handlers/<name>.py` where `<name>` must match `[A-Za-z0-9_]+`.
-- Modules are loaded via `importlib.util.spec_from_file_location` and cached in `_PLUGIN_CACHE` keyed by name with the file mtime; the cache is protected by `_PLUGIN_LOCK` and the module is reloaded when mtime changes.
+- Modules are loaded via `importlib.util.spec_from_file_location` and cached in `_PLUGIN_CACHE` with mtime; the cache is protected by `_PLUGIN_LOCK` and modules are reloaded when file mtime changes.
 - Plugins must expose a callable `handle(req)` function. The server will call `module.handle(req)` and normalize the result.
 - `req` shape (provided to plugins):
 	- `method`: HTTP method string
-	- `path`: full path on the request
+	- `path`: full request path
 	- `subpath`: part of the path after the plugin name (leading slash or empty)
 	- `query`: parsed query params (values are lists)
 	- `headers`: dict of request headers
@@ -81,23 +104,17 @@ Plugin loader (what to know when editing)
 	- `(status, headers, body)` -> same as above with explicit headers
 	- any other value -> converted to string and sent as 200 text
 
-- Error handling: if plugin import or execution fails, the server returns a 500 with a short message; if plugin module is not found, it returns 404.
+Important: prefer returning `dict` objects for successful JSON responses. Returning a raw `list` can be ambiguous: the loader treats `list/tuple` of length >= 2 as a `(status, body)` tuple, which can cause runtime errors if the first list element is not an integer status code.
 
 ## Integration points and side effects to watch
 - The server relies on the `Content-Length` header for POST JSON parsing; clients that send chunked bodies or omit the header will not be supported.
 - No database or external services are present — adding one should include a simple config pattern (env vars) and avoid global state.
 
-## Examples from the codebase
-- Response helpers: see `RequestHandler._send`, `send_json`, and `send_text` in `main.py`.
-- JSON body parsing: `RequestHandler.parse_body_json()` returns `None` on invalid/missing JSON — callers return `400` in that case.
+TODO (near term priorities)
+- Wire `public/js/app.js` to real CRUD endpoints and implement minimal `POST /plugins/database_handler/games` to create entries in a simple JSON or SQLite file (under `data/`).
+- Implement CSV parsing in `handlers/import_handler.py` and mapping preview UI in `public/index.html`/`app.js`.
+- Add modal open/close logic and form submission handling in `public/js/app.js`.
+- Add small integration tests that start the server and assert plugin endpoints return expected shapes.
+- Add instructions in `README.md` for developer workflow and a `requirements.txt` only if external dependencies are introduced.
 
-## Merge behavior for AI agents
-- If updating this file, preserve the short structure and concrete examples. If a `.github/copilot-instructions.md` already exists, merge by keeping unique, repository-specific lines above and consolidating duplicate guidance.
-
-## When in doubt
-- Run the server locally and exercise endpoints before opening a PR. Keep changes minimal and document any new runtime env vars in `README.md`.
-
-If you need the loader to behave differently (signed plugins, different reload strategy, or remote fetching), document the desired contract and add tests that exercise reloads and error paths.
-
----
-If something in this file is unclear or you want more examples (tests, CI snippets, or a consistent port default), tell me which area to expand.
+If you need me to implement any TODOs, tell me which one to tackle next and I'll change the code directly.

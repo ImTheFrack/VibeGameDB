@@ -20,7 +20,6 @@ MODULES = [
     "handlers.database_handler",
     "handlers.import_handler",
     "handlers.ai_handler",
-    "handlers.hello",
 ]
 
 def test_import(name):
