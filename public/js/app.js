@@ -16,7 +16,7 @@ let allGamePlatforms = [];          // All game-platform links
 let currentTab = 'games';           // Currently active tab
 let currentGameId = null;           // Track which game we're adding to a platform
 let allTags = [];                   // All unique tags from games
-let platformFilterAnd = false;      // whether multiple platform filters require AND semantics
+let platformFilterAnd = null;      // whether multiple platform filters require AND semantics (null until config fetched)
 // Display options: when false the corresponding part is hidden
 let displayOptions = {
     show_cover: true,
@@ -453,7 +453,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const tags = Array.from(tagCheckboxes).map(cb => cb.value);
             
             // Update filter state
-            currentFilters = { keyword, platforms, tags };
+            // Read platform mode radio: 'and' or 'or'
+            const selMode = document.querySelector('input[name="platform_mode"]:checked');
+            const platformAnd = selMode ? (selMode.value === 'and') : undefined;
+            currentFilters = { keyword, platforms, tags, platformAnd };
             
             // Apply filters
             applyFilters();
@@ -691,6 +694,17 @@ async function populateFilterModal() {
     if (keywordInput) {
         keywordInput.value = currentFilters.keyword;
     }
+    // Set platform mode radio if present (currentFilters.platformAnd: true => AND)
+    const mode = document.querySelector('input[name="platform_mode"][value="and"]');
+    const modeOr = document.querySelector('input[name="platform_mode"][value="or"]');
+    if (mode && modeOr) {
+        if (typeof currentFilters.platformAnd !== 'undefined') {
+            if (currentFilters.platformAnd) mode.checked = true; else modeOr.checked = true;
+        } else {
+            // fallback to server config
+            if (platformFilterAnd) mode.checked = true; else modeOr.checked = true;
+        }
+    }
 }
 
 // Apply current filters to games
@@ -723,7 +737,9 @@ function applyFilters() {
     
     // Filter by platforms
     if (currentFilters.platforms.length > 0) {
-        if (platformFilterAnd) {
+        // Determine semantics: prefer explicit selection from the filter modal
+        const useAnd = typeof currentFilters.platformAnd !== 'undefined' ? currentFilters.platformAnd : platformFilterAnd;
+        if (useAnd) {
             // AND semantics: require that the game has at least one link for
             // every selected platform.
             filtered = filtered.filter(game => {
