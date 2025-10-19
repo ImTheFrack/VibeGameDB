@@ -423,6 +423,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const editGame = e.target.closest('.edit-game');
         const editPlatform = e.target.closest('.edit-platform');
         const addToPlat = e.target.closest('.add-to-platform');
+        const platSpan = e.target.closest('.plat');
+        const tagSpan = e.target.closest('.tag');
         
         if (editGame) {
             const gameId = editGame.getAttribute('data-id');
@@ -439,6 +441,29 @@ document.addEventListener('DOMContentLoaded', () => {
             currentGameId = gameId;
             await populateAddToPlatformForm();
             openModal(modalAddToPlatform);
+        }
+        // Click on a platform pill toggles that platform in currentFilters.platforms
+        if (platSpan) {
+            const pid = platSpan.getAttribute('data-platform-id');
+            if (!pid) return;
+            const idx = currentFilters.platforms.indexOf(pid);
+            if (idx === -1) currentFilters.platforms.push(pid); else currentFilters.platforms.splice(idx, 1);
+            // Clear modal checkboxes to keep UI consistent
+            document.querySelectorAll('#filter-platforms input[type="checkbox"]').forEach(cb => cb.checked = currentFilters.platforms.includes(cb.value));
+            applyFilters();
+            updateActiveFiltersDisplay();
+            return;
+        }
+        // Click on a tag toggles that tag in currentFilters.tags
+        if (tagSpan) {
+            const t = tagSpan.getAttribute('data-tag');
+            if (!t) return;
+            const idx = currentFilters.tags.indexOf(t);
+            if (idx === -1) currentFilters.tags.push(t); else currentFilters.tags.splice(idx, 1);
+            document.querySelectorAll('#filter-tags input[type="checkbox"]').forEach(cb => cb.checked = currentFilters.tags.includes(cb.value));
+            applyFilters();
+            updateActiveFiltersDisplay();
+            return;
         }
     });
 
@@ -565,7 +590,7 @@ async function populateFilterModal() {
             const label = document.createElement('label');
             const input = document.createElement('input');
             input.type = 'checkbox';
-            input.value = p.id;
+            input.value = String(p.id);
             input.checked = currentFilters.platforms.includes(p.id);
             label.appendChild(input);
             label.appendChild(document.createTextNode(p.name));
@@ -581,8 +606,8 @@ async function populateFilterModal() {
             const label = document.createElement('label');
             const input = document.createElement('input');
             input.type = 'checkbox';
-            input.value = tag;
-            input.checked = currentFilters.tags.includes(tag);
+            input.value = String(tag);
+            input.checked = currentFilters.tags.includes(String(tag));
             label.appendChild(input);
             label.appendChild(document.createTextNode(tag));
             tagsContainer.appendChild(label);
@@ -628,16 +653,17 @@ function applyFilters() {
     if (currentFilters.platforms.length > 0) {
         filtered = filtered.filter(game => {
             return currentFilters.platforms.some(platformId =>
-                allGamePlatforms.some(gp => gp.game_id === game.id && gp.platform_id === platformId)
+                allGamePlatforms.every(gp => gp.game_id === game.id && gp.platform_id === platformId)
             );
         });
     }
     
     // Filter by tags
     if (currentFilters.tags.length > 0) {
+        // Require that ALL selected tags are present on the game (AND semantics)
         filtered = filtered.filter(game => {
             const gameTags = game.tags || [];
-            return currentFilters.tags.some(tag => gameTags.includes(tag));
+            return currentFilters.tags.every(tag => gameTags.includes(tag));
         });
     }
     
@@ -785,13 +811,15 @@ function renderGames(games) {
             .map(gp => {
                 const platform = allPlatforms.find(p => p.id === gp.platform_id);
                 const format = gp.is_digital ? '📱' : '💿';
-                return `<span class="plat">${format} ${escapeHtml(platform?.name || gp.platform_id)}</span>`;
+                const pid = platform?.id || gp.platform_id;
+                const pname = escapeHtml(platform?.name || gp.platform_id);
+                return `<span class="plat" data-platform-id="${pid}">${format} ${pname}</span>`;
             })
             .join('');
         
         const tagsHtml = (game.tags || [])
-            .map(tag => `<span class="tag">${escapeHtml(tag)}</span>`)
-            .join('');
+            .map(tag => `<span class="tag" data-tag="${escapeHtml(tag)}">${escapeHtml(tag)}</span>`)
+            .join(' ');
         
         card.innerHTML = `
             <img class="card-cover" src="${game.cover_image_url || '/img/cover_placeholder.svg'}" alt="cover" onerror="this.src='/img/cover_placeholder.svg'">

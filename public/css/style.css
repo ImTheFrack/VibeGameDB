@@ -68,6 +68,12 @@ body{
 .platform-icons .plat{background:rgba(255,255,255,0.03);padding:4px 8px;border-radius:6px;font-size:12px}
 .card-actions{display:flex;justify-content:flex-end}
 
+/* Tag pill styling */
+.tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.tag{background:rgba(255,255,255,0.03);padding:4px 8px;border-radius:999px;font-size:12px;cursor:pointer}
+.tag:hover{background:rgba(255,255,255,0.06)}
+.plat{cursor:pointer}
+
 /* Modals */
 .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);z-index:120}
 .modal[aria-hidden="false"]{display:flex}
