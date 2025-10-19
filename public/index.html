@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>My Game Library</title>
+    <!--
+        Main SPA shell for the Video Game Database app.
+        This file contains the static structure: header, tabs, controls, display grid,
+        and modal dialogs. JavaScript in `/js/app.js` will wire up behavior.
+        The UI uses a dark theme provided by `/css/style.css`.
+    -->
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <!-- App container -->
+    <div id="app" class="app-root">
+        <!-- Header with title, search and action buttons -->
+        <header class="app-header">
+            <div class="title-area">
+                <h1 id="app-title">My Game Library</h1>
+                <p class="subtitle">A personal catalog for the games you love</p>
+            </div>
+
+            <div class="header-controls">
+                <!-- Search bar: JS will wire this to filter results -->
+                <input id="search-input" class="search-input" type="search" placeholder="Search for games, platforms, genres..." aria-label="Search" />
+
+                <!-- Primary action buttons -->
+                <div class="button-group">
+                    <button id="btn-add-game" class="btn btn-primary">Add Game</button>
+                    <button id="btn-add-platform" class="btn">Add Platform</button>
+                    <button id="btn-import-csv" class="btn">Import from CSV</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main area containing tabs, controls and display grid -->
+        <main class="main-area">
+            <!-- Tabs -->
+            <nav class="tabs" role="tablist">
+                <button class="tab active" data-tab="games" role="tab" aria-selected="true">Games</button>
+                <button class="tab" data-tab="platforms" role="tab" aria-selected="false">Platforms</button>
+            </nav>
+
+            <!-- Controls bar: sorting + filtering -->
+            <section class="controls-bar">
+                <div class="left-controls">
+                    <label for="sort-select">Sort by:</label>
+                    <select id="sort-select">
+                        <option value="name_asc">Name (A-Z)</option>
+                        <option value="name_desc">Name (Z-A)</option>
+                        <option value="year_desc">Release Year (Newest)</option>
+                        <option value="year_asc">Release Year (Oldest)</option>
+                    </select>
+                </div>
+
+                <div class="right-controls">
+                    <span class="filter-label">Filter by Platform:</span>
+                    <div class="platform-filters">
+                        <!-- These are placeholders; JS should populate actual platform list -->
+                        <button class="filter-btn active" data-platform="all">All</button>
+                        <button class="filter-btn" data-platform="Steam">Steam</button>
+                        <button class="filter-btn" data-platform="PS5">PS5</button>
+                        <button class="filter-btn" data-platform="Switch">Switch</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Display grid: cards will be rendered here via JS. We include template examples -->
+            <section id="display-grid" class="display-grid" aria-live="polite">
+                <!-- Example Game Card (serves as a visual/template sample). JS should clone a template instead of relying on this static one. -->
+                <article class="card game-card example">
+                    <img class="card-cover" src="https://via.placeholder.com/240x135.png?text=Cover" alt="Game cover placeholder">
+                    <div class="card-body">
+                        <h3 class="card-title">Cyberpunk 2077</h3>
+                        <p class="card-desc">A story-driven, open world RPG set in Night City.</p>
+                        <div class="platform-icons">
+                            <span class="plat">Steam</span>
+                            <span class="plat">GOG</span>
+                        </div>
+                        <div class="card-actions">
+                            <button class="btn btn-sm edit-game">Edit</button>
+                        </div>
+                    </div>
+                </article>
+
+                <!-- Example Platform Card -->
+                <article class="card platform-card example">
+                    <img class="card-cover" src="https://via.placeholder.com/120x60.png?text=Logo" alt="Platform logo placeholder">
+                    <div class="card-body">
+                        <h3 class="card-title">Steam</h3>
+                        <p class="card-desc">Digital - 52 games owned</p>
+                        <div class="card-actions">
+                            <button class="btn btn-sm edit-platform">Edit</button>
+                        </div>
+                    </div>
+                </article>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modals (hidden by default) -->
+    <!-- Add / Edit Game Modal -->
+    <div id="modal-game" class="modal" aria-hidden="true">
+        <div class="modal-content">
+            <header class="modal-header">
+                <h2 id="modal-game-title">Add / Edit Game</h2>
+                <button class="modal-close" data-close>&times;</button>
+            </header>
+            <form id="form-game" class="modal-form">
+                <label>Game Title<input type="text" name="title" required></label>
+                <label>Description<textarea name="description"></textarea></label>
+                <label>Cover Image URL<input type="url" name="cover_image_url"></label>
+                <label>Trailer URL<input type="url" name="trailer_url"></label>
+                <label>Platforms (hold Ctrl / Cmd to multi-select)
+                    <select name="platforms" multiple size="5">
+                        <!-- JS will populate platform options -->
+                    </select>
+                </label>
+                <div class="modal-actions">
+                    <button type="submit" class="btn btn-primary">Save</button>
+                    <button type="button" class="btn" data-close>Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add / Edit Platform Modal -->
+    <div id="modal-platform" class="modal" aria-hidden="true">
+        <div class="modal-content">
+            <header class="modal-header">
+                <h2 id="modal-platform-title">Add / Edit Platform</h2>
+                <button class="modal-close" data-close>&times;</button>
+            </header>
+            <form id="form-platform" class="modal-form">
+                <label>Platform Name<input type="text" name="name" required></label>
+                <label>Type
+                    <select name="type">
+                        <option>Digital</option>
+                        <option>Physical</option>
+                    </select>
+                </label>
+                <label>Description<textarea name="description"></textarea></label>
+                <label>Icon URL<input type="url" name="icon_url"></label>
+                <div class="modal-actions">
+                    <button type="submit" class="btn btn-primary">Save</button>
+                    <button type="button" class="btn" data-close>Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- CSV Import Modal -->
+    <div id="modal-import" class="modal" aria-hidden="true">
+        <div class="modal-content">
+            <header class="modal-header">
+                <h2>Import from CSV</h2>
+                <button class="modal-close" data-close>&times;</button>
+            </header>
+            <div class="modal-body">
+                <input id="csv-file-input" type="file" accept="text/csv" />
+                <p class="muted">Upload a CSV file of games. You will be able to map columns before importing.</p>
+                <textarea id="csv-preview" rows="8" placeholder="Preview / mapping will appear here" readonly></textarea>
+                <div class="modal-actions">
+                    <button id="btn-run-import" class="btn btn-primary">Run Import</button>
+                    <button class="btn" data-close>Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/app.js"></script>
+</body>
+</html>
