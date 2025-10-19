@@ -4,6 +4,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, unquote, quote
 import mimetypes
 import html
+import importlib.util
+import importlib
+import threading
+import re
 
 #!/usr/bin/env python3
 
@@ -17,6 +21,39 @@ DOC_ROOT = os.path.realpath(
     )
 )
 
+# Handlers directory (module plugins live here). Keep minimal and local to the repo.
+HANDLERS_DIR = os.path.join(os.path.dirname(__file__), "handlers")
+# Simple cache: name -> (module, mtime)
+_PLUGIN_CACHE = {}
+_PLUGIN_LOCK = threading.Lock()
+
+def _load_plugin(name: str):
+    """Load (and cache) a plugin module from HANDLERS_DIR/name.py.
+    Returns (module, None) or (None, error_message).
+    """
+    # Basic safety: only allow simple names
+    if not re.fullmatch(r"[A-Za-z0-9_]+", name):
+        return None, "invalid plugin name"
+    path = os.path.join(HANDLERS_DIR, f"{name}.py")
+    if not os.path.isfile(path):
+        return None, "not found"
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return None, "cannot stat plugin file"
+
+    with _PLUGIN_LOCK:
+        cached = _PLUGIN_CACHE.get(name)
+        if cached and cached[1] == mtime:
+            return cached[0], None
+        try:
+            spec = importlib.util.spec_from_file_location(f"vibegamedb.handlers.{name}", path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            _PLUGIN_CACHE[name] = (module, mtime)
+            return module, None
+        except Exception as e:
+            return None, f"failed to load plugin: {e}"
 
 def _resolve_fs_path(url_path: str):
     """Map a URL path to a filesystem path under DOC_ROOT, preventing traversal.
@@ -134,10 +171,106 @@ class RequestHandler(BaseHTTPRequestHandler):
         # Not a file or directory we can serve
         return False
 
+    def _serve_plugin(self, name: str, subpath: str) -> bool:
+        """Attempt to load and invoke a plugin handler.
+        Returns True if handled (response sent), False otherwise.
+        Plugin API: handle(req) -> (status,int, headers:dict, body:bytes/str) OR dict (then returned as JSON).
+        """
+        module, err = _load_plugin(name)
+        if module is None:
+            if err == "not found":
+                self.send_text("Not Found", status=404)
+            else:
+                self.send_text(f"Plugin error: {err}", status=500)
+            return True
+
+        if not hasattr(module, "handle") or not callable(module.handle):
+            self.send_text("Plugin has no handle(req) function", status=500)
+            return True
+
+        parsed = urlparse(self.path)
+        req = {
+            "method": self.command,
+            "path": parsed.path,
+            "subpath": subpath,
+            "query": parse_qs(parsed.query),
+            "headers": dict(self.headers),
+            "body": b"",
+            "json": None,
+        }
+
+        # Read body for POST/PUT-like methods (do not consume for other handlers)
+        if self.command in ("POST", "PUT", "PATCH"):
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                length = 0
+            if length > 0:
+                try:
+                    req["body"] = self.rfile.read(length)
+                except Exception:
+                    req["body"] = b""
+            # Try to parse JSON if content-type indicates JSON
+            ctype = self.headers.get("Content-Type", "")
+            if "application/json" in ctype:
+                try:
+                    req["json"] = json.loads(req["body"].decode("utf-8"))
+                except Exception:
+                    req["json"] = None
+
+        try:
+            result = module.handle(req)
+        except Exception as e:
+            # Plugin raised; surface as 500 with short message
+            self.send_text(f"Plugin raised exception: {e}", status=500)
+            return True
+
+        # Normalize result
+        if isinstance(result, dict):
+            self.send_json(result)
+            return True
+
+        if isinstance(result, (list, tuple)) and len(result) >= 2:
+            # (status, body) or (status, headers, body)
+            status = int(result[0])
+            if len(result) == 2:
+                body = result[1]
+                headers = {}
+            else:
+                headers = result[1] or {}
+                body = result[2]
+
+            # Convert body
+            if isinstance(body, (dict, list)):
+                # JSON payload
+                self.send_json(body, status=status, extra_headers=headers)
+                return True
+            if isinstance(body, bytes):
+                content_type = headers.pop("Content-Type", "application/octet-stream")
+                self._send(status=status, body=body, content_type=content_type, extra_headers=headers)
+                return True
+            # treat as text
+            self.send_text(str(body), status=status, extra_headers=headers)
+            return True
+
+        # Fallback: string body
+        self.send_text(str(result), status=200)
+        return True
+
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
         qs = parse_qs(parsed.query)
+
+        # Plugin route: /plugins/<name> (single-name, no slashes)
+        if path.startswith("/plugins/"):
+            rest = path[len("/plugins/"):]
+
+            name = rest.split("/", 1)[0]
+            subpath = "/" + rest.split("/", 1)[1] if "/" in rest else ""
+            if name:
+                if self._serve_plugin(name, subpath):
+                    return
 
         if path == "/":
             # Prefer serving an index file if present; otherwise show landing
@@ -165,6 +298,16 @@ class RequestHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path
+
+        # Plugin route for POST as well
+        if path.startswith("/plugins/"):
+            rest = path[len("/plugins/"):]
+
+            name = rest.split("/", 1)[0]
+            subpath = "/" + rest.split("/", 1)[1] if "/" in rest else ""
+            if name:
+                if self._serve_plugin(name, subpath):
+                    return
 
         if path == "/echo":
             body = self.parse_body_json()
