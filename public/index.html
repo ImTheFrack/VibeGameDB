@@ -90,7 +90,7 @@
                     <img class="card-cover" src="/img/icon_placeholder.svg" alt="Platform logo placeholder">
                     <div class="card-body">
                         <h3 class="card-title">Steam</h3>
-                        <p class="card-desc">Digital - 52 games owned</p>
+                        <p class="card-desc">Digital • 52 games</p>
                         <div class="card-actions">
                             <button class="btn btn-sm edit-platform">Edit</button>
                         </div>
@@ -109,17 +109,51 @@
                 <button class="modal-close" data-close>&times;</button>
             </header>
             <form id="form-game" class="modal-form">
-                <label>Game Title<input type="text" name="title" required></label>
+                <label>Game Title<input type="text" name="name" required></label>
                 <label>Description<textarea name="description"></textarea></label>
                 <label>Cover Image URL<input type="url" name="cover_image_url"></label>
                 <label>Trailer URL<input type="url" name="trailer_url"></label>
-                <label>Platforms (hold Ctrl / Cmd to multi-select)
-                    <select name="platforms" multiple size="5">
+                <label><input type="checkbox" name="is_remake"> This is a remake</label>
+                <label><input type="checkbox" name="is_remaster"> This is a remaster</label>
+                <label>Tags (comma-separated)<input type="text" name="tags" placeholder="e.g., action, RPG, indie"></label>
+                <div class="modal-actions">
+                    <button type="submit" class="btn btn-primary">Save</button>
+                    <button type="button" class="btn" data-close>Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add Game to Platform Modal -->
+    <div id="modal-add-to-platform" class="modal" aria-hidden="true">
+        <div class="modal-content">
+            <header class="modal-header">
+                <h2>Add Game to Platform</h2>
+                <button class="modal-close" data-close>&times;</button>
+            </header>
+            <form id="form-add-to-platform" class="modal-form">
+                <label>Platform
+                    <select name="platform_id" required>
                         <!-- JS will populate platform options -->
                     </select>
                 </label>
+                <fieldset>
+                    <legend>Format</legend>
+                    <label><input type="radio" name="is_digital" value="true" required> Digital</label>
+                    <label><input type="radio" name="is_digital" value="false"> Physical</label>
+                </fieldset>
+                <label>Acquisition Method
+                    <select name="acquisition_method">
+                        <option value="">-- Select --</option>
+                        <option value="bought">Bought</option>
+                        <option value="free">Free</option>
+                        <option value="bundle">Bundle</option>
+                        <option value="gift">Gift</option>
+                        <option value="subscription">Subscription</option>
+                    </select>
+                </label>
                 <div class="modal-actions">
-                    <button type="submit" class="btn btn-primary">Save</button>
+                    <button type="submit" class="btn btn-primary">Add</button>
                     <button type="button" class="btn" data-close>Cancel</button>
                 </div>
             </form>
@@ -135,14 +169,15 @@
             </header>
             <form id="form-platform" class="modal-form">
                 <label>Platform Name<input type="text" name="name" required></label>
-                <label>Type
-                    <select name="type">
-                        <option>Digital</option>
-                        <option>Physical</option>
-                    </select>
-                </label>
+                <fieldset>
+                    <legend>Supported Formats</legend>
+                    <label><input type="checkbox" name="supports_digital" checked> Digital</label>
+                    <label><input type="checkbox" name="supports_physical"> Physical</label>
+                </fieldset>
                 <label>Description<textarea name="description"></textarea></label>
                 <label>Icon URL<input type="url" name="icon_url"></label>
+                <label>Image URL<input type="url" name="image_url"></label>
+                <label>Year Acquired<input type="number" name="year_acquired" min="1980" max="2100"></label>
                 <div class="modal-actions">
                     <button type="submit" class="btn btn-primary">Save</button>
                     <button type="button" class="btn" data-close>Cancel</button>

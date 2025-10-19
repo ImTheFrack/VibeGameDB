@@ -12,7 +12,10 @@
 // ----------------------
 let currentPlatformFilter = 'all';  // Currently selected filter
 let allGames = [];                  // All games from database
+let allPlatforms = [];              // All platforms from database
+let allGamePlatforms = [];          // All game-platform links
 let currentTab = 'games';           // Currently active tab
+let currentGameId = null;           // Track which game we're adding to a platform
 
 // Ensure DOM is ready before running any code that touches elements.
 document.addEventListener('DOMContentLoaded', () => {
@@ -25,8 +28,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalGame = document.getElementById('modal-game');
     const modalPlatform = document.getElementById('modal-platform');
     const modalImport = document.getElementById('modal-import');
+    const modalAddToPlatform = document.getElementById('modal-add-to-platform');
     const formGame = document.getElementById('form-game');
     const formPlatform = document.getElementById('form-platform');
+    const formAddToPlatform = document.getElementById('form-add-to-platform');
     const platformFiltersContainer = document.querySelector('.platform-filters');
 
     // ----------------------
@@ -52,7 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Close modal when clicking outside the modal-content
-    [modalGame, modalPlatform, modalImport].forEach(modal => {
+    [modalGame, modalPlatform, modalImport, modalAddToPlatform].forEach(modal => {
         modal.addEventListener('click', (e) => {
             if (e.target === modal) closeModal(modal);
         });
@@ -88,15 +93,19 @@ document.addEventListener('DOMContentLoaded', () => {
     formGame.addEventListener('submit', async (e) => {
         e.preventDefault();
         const formData = new FormData(formGame);
-        const platformSelect = formGame.querySelector('select[name="platforms"]');
-        const selectedPlatforms = Array.from(platformSelect.selectedOptions).map(opt => opt.value);
+        
+        // Parse tags from comma-separated string
+        const tagsStr = formData.get('tags') || '';
+        const tags = tagsStr.split(',').map(t => t.trim()).filter(t => t.length > 0);
 
         const gameData = {
-            name: formData.get('title'),
+            name: formData.get('name'),
             description: formData.get('description'),
             cover_image_url: formData.get('cover_image_url'),
             trailer_url: formData.get('trailer_url'),
-            platforms: selectedPlatforms
+            is_remake: formData.get('is_remake') === 'on',
+            is_remaster: formData.get('is_remaster') === 'on',
+            tags: tags
         };
 
         const gameId = formGame.dataset.gameId;
@@ -116,7 +125,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert(`Error: ${err.error || 'Failed to save game'}`);
                 return;
             }
-            closeModal(modalGame);  // ← Changed from modalPlatform
+            const result = await res.json();
+            closeModal(modalGame);
             await populatePlatformFilters();
             if (currentTab === 'games') fetchGames();
         } catch (err) {
@@ -131,10 +141,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const platformData = {
             name: formData.get('name'),
-            type: formData.get('type'),
+            supports_digital: formData.get('supports_digital') === 'on',
+            supports_physical: formData.get('supports_physical') === 'on',
             description: formData.get('description'),
-            icon_url: formData.get('icon_url')
+            icon_url: formData.get('icon_url'),
+            image_url: formData.get('image_url'),
+            year_acquired: formData.get('year_acquired') ? parseInt(formData.get('year_acquired')) : null
         };
+
+        // Validate at least one format is supported
+        if (!platformData.supports_digital && !platformData.supports_physical) {
+            alert('Platform must support at least one format (Digital or Physical)');
+            return;
+        }
 
         const platformId = formPlatform.dataset.platformId;
         const endpoint = platformId
@@ -162,6 +181,37 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Form handler for adding a game to a platform
+    formAddToPlatform.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const formData = new FormData(formAddToPlatform);
+
+        const gamePlatformData = {
+            game_id: currentGameId,
+            platform_id: formData.get('platform_id'),
+            is_digital: formData.get('is_digital') === 'true',
+            acquisition_method: formData.get('acquisition_method') || null
+        };
+
+        try {
+            const res = await fetch('/plugins/database_handler/game_platforms', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(gamePlatformData)
+            });
+            if (!res.ok) {
+                const err = await res.json();
+                alert(`Error: ${err.error || 'Failed to add game to platform'}`);
+                return;
+            }
+            closeModal(modalAddToPlatform);
+            if (currentTab === 'games') fetchGames();
+        } catch (err) {
+            console.error('Form submission error:', err);
+            alert('Network error: ' + err.message);
+        }
+    });
+
     // Tab switching behavior (simple client-only for now)
     tabs.forEach(tab => {
         tab.addEventListener('click', (e) => {
@@ -174,12 +224,28 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Delegate edit buttons inside the display grid for demo interaction
-    displayGrid.addEventListener('click', (e) => {
+    // Delegate edit buttons inside the display grid
+    displayGrid.addEventListener('click', async (e) => {
         const editGame = e.target.closest('.edit-game');
         const editPlatform = e.target.closest('.edit-platform');
-        if (editGame) return console.log('Edit game clicked (template)');
-        if (editPlatform) return console.log('Edit platform clicked (template)');
+        const addToPlat = e.target.closest('.add-to-platform');
+        
+        if (editGame) {
+            const gameId = editGame.getAttribute('data-id');
+            // TODO: Implement edit game functionality
+            console.log('Edit game clicked:', gameId);
+        }
+        if (editPlatform) {
+            const platformId = editPlatform.getAttribute('data-id');
+            // TODO: Implement edit platform functionality
+            console.log('Edit platform clicked:', platformId);
+        }
+        if (addToPlat) {
+            const gameId = addToPlat.getAttribute('data-id');
+            currentGameId = gameId;
+            await populateAddToPlatformForm();
+            openModal(modalAddToPlatform);
+        }
     });
 
     // Wire up "All" filter button
@@ -220,15 +286,28 @@ async function fetchGames() {
     const data = await apiGet('/plugins/database_handler/games');
     if (data) {
         allGames = data.games || [];
+        // Also fetch game-platform links
+        await fetchGamePlatforms();
         // Apply current filter
         filterGamesByPlatform(currentPlatformFilter);
+    }
+}
+
+// Fetch game-platform links
+async function fetchGamePlatforms() {
+    const data = await apiGet('/plugins/database_handler/game_platforms');
+    if (data) {
+        allGamePlatforms = data.game_platforms || [];
     }
 }
 
 // Fetch list of platforms from the backend plugin
 async function fetchPlatforms() {
     const data = await apiGet('/plugins/database_handler/platforms');
-    if (data) renderPlatforms(data.platforms || []);
+    if (data) {
+        allPlatforms = data.platforms || [];
+        renderPlatforms(allPlatforms);
+    }
 }
 
 // Populate platform filter buttons from database
@@ -279,28 +358,26 @@ function filterGamesByPlatform(platformId) {
         renderGames(allGames);
     } else {
         const filtered = allGames.filter(game => {
-            const gamePlatforms = game.platforms || [];
-            return gamePlatforms.some(p => 
-                (typeof p === 'string' ? p : p.id || p.name) === platformId
-            );
+            // Check if this game has any game_platforms entries for the selected platform
+            return allGamePlatforms.some(gp => gp.game_id === game.id && gp.platform_id === platformId);
         });
         renderGames(filtered);
     }
 }
 
-// Fetch platforms and populate the dropdown in the game form
-async function populatePlatformsDropdown() {
+// Populate the "Add to Platform" form with available platforms
+async function populateAddToPlatformForm() {
     const data = await apiGet('/plugins/database_handler/platforms');
     if (!data) return;
     
-    const platformSelect = document.querySelector('select[name="platforms"]');
+    const platformSelect = document.querySelector('#form-add-to-platform select[name="platform_id"]');
     if (!platformSelect) return;
     
-    platformSelect.innerHTML = '';
+    platformSelect.innerHTML = '<option value="">-- Select a platform --</option>';
     const platforms = data.platforms || [];
     platforms.forEach(p => {
         const option = document.createElement('option');
-        option.value = p.id || p.name;
+        option.value = p.id;
         option.textContent = p.name;
         platformSelect.appendChild(option);
     });
@@ -327,9 +404,18 @@ function renderGames(games) {
         const card = document.createElement('article');
         card.className = 'card game-card';
 
-        // Build inner HTML using template literals. In production, prefer safer DOM APIs
-        const platformsHtml = (game.platforms || [])
-            .map(p => `<span class="plat">${escapeHtml(typeof p === 'string' ? p : p.name || p)}</span>`)
+        // Get platforms for this game from game_platforms table
+        const gamePlatformLinks = allGamePlatforms.filter(gp => gp.game_id === game.id);
+        const platformsHtml = gamePlatformLinks
+            .map(gp => {
+                const platform = allPlatforms.find(p => p.id === gp.platform_id);
+                const format = gp.is_digital ? '📱' : '💿';
+                return `<span class="plat">${format} ${escapeHtml(platform?.name || gp.platform_id)}</span>`;
+            })
+            .join('');
+        
+        const tagsHtml = (game.tags || [])
+            .map(tag => `<span class="tag">${escapeHtml(tag)}</span>`)
             .join('');
         
         card.innerHTML = `
@@ -337,8 +423,12 @@ function renderGames(games) {
             <div class="card-body">
                 <h3 class="card-title">${escapeHtml(game.name)}</h3>
                 <p class="card-desc">${escapeHtml(game.description || '')}</p>
-                <div class="platform-icons">${platformsHtml}</div>
-                <div class="card-actions"><button class="btn btn-sm edit-game" data-id="${game.id}">Edit</button></div>
+                ${tagsHtml ? `<div class="tags">${tagsHtml}</div>` : ''}
+                <div class="platform-icons">${platformsHtml || '<span class="muted">No platforms</span>'}</div>
+                <div class="card-actions">
+                    <button class="btn btn-sm edit-game" data-id="${game.id}">Edit</button>
+                    <button class="btn btn-sm add-to-platform" data-id="${game.id}">Add Platform</button>
+                </div>
             </div>
         `;
 
@@ -360,11 +450,21 @@ function renderPlatforms(platforms) {
     platforms.forEach(p => {
         const card = document.createElement('article');
         card.className = 'card platform-card';
+        
+        // Build format string
+        const formats = [];
+        if (p.supports_digital) formats.push('Digital');
+        if (p.supports_physical) formats.push('Physical');
+        const formatStr = formats.join(' • ');
+        
+        // Count games on this platform
+        const gameCount = allGamePlatforms.filter(gp => gp.platform_id === p.id).length;
+        
         card.innerHTML = `
             <img class="card-cover" src="${p.icon_url || '/img/icon_placeholder.svg'}" alt="icon" onerror="this.src='/img/icon_placeholder.svg'">
             <div class="card-body">
                 <h3 class="card-title">${escapeHtml(p.name)}</h3>
-                <p class="card-desc">${escapeHtml(p.type || 'Digital')}</p>
+                <p class="card-desc">${escapeHtml(formatStr)} • ${gameCount} games</p>
                 <div class="card-actions"><button class="btn btn-sm edit-platform" data-id="${p.id}">Edit</button></div>
             </div>
         `;
