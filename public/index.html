@@ -169,11 +169,11 @@
             </header>
             <form id="form-platform" class="modal-form">
                 <label>Platform Name<input type="text" name="name" required></label>
-                <fieldset>
-                    <legend>Supported Formats</legend>
+                <div class="inline-checkboxes">
+                    <span>Supported Formats:</span>
                     <label><input type="checkbox" name="supports_digital" checked> Digital</label>
                     <label><input type="checkbox" name="supports_physical"> Physical</label>
-                </fieldset>
+                </div>
                 <label>Description<textarea name="description"></textarea></label>
                 <label>Icon URL<input type="url" name="icon_url"></label>
                 <label>Image URL<input type="url" name="image_url"></label>
