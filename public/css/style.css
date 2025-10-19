@@ -33,6 +33,12 @@ body{
 .header-controls{display:flex;align-items:center;gap:12px}
 .search-input{background:var(--glass);border:1px solid rgba(255,255,255,0.03);color:var(--text);padding:8px 12px;border-radius:8px;min-width:320px}
 .search-help{font-size:12px;color:var(--muted);margin-top:6px}
+
+/* Small circular help icon with tooltip */
+.help-icon{width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.06);cursor:default;color:var(--muted);position:relative}
+.help-icon:focus{outline:2px solid rgba(79,142,247,0.3)}
+.help-tooltip{display:none;position:absolute;top:26px;left:50%;transform:translateX(-50%);background:var(--panel);color:var(--text);padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.03);white-space:nowrap;font-size:12px;z-index:200}
+.help-icon:hover .help-tooltip,.help-icon:focus .help-tooltip{display:block}
 .button-group{display:flex;gap:8px}
 .btn{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--text);padding:8px 12px;border-radius:8px;cursor:pointer}
 .btn:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(0,0,0,0.6)}
