@@ -1,0 +1,2 @@
+# VibeGameDB
+Vibe-coded GameDB
