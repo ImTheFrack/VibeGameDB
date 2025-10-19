@@ -351,6 +351,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnDisplay = document.getElementById('btn-display');
     const modalDisplayEl = document.getElementById('modal-display');
     const formDisplay = document.getElementById('form-display');
+    function updateDisplayButton() {
+        if (!btnDisplay) return;
+        // Count how many display options are OFF (hidden)
+        const opts = Object.keys(displayOptions);
+        const hiddenCount = opts.reduce((acc, k) => acc + (displayOptions[k] ? 0 : 1), 0);
+        if (hiddenCount > 0) {
+            btnDisplay.textContent = `🖼 Display (${hiddenCount})`;
+            btnDisplay.classList.add('display-options-on');
+        } else {
+            btnDisplay.textContent = '🖼 Display';
+            btnDisplay.classList.remove('display-options-on');
+        }
+    }
     if (btnDisplay && modalDisplayEl && formDisplay) {
         btnDisplay.addEventListener('click', (e) => {
             // populate current states
@@ -373,8 +386,12 @@ document.addEventListener('DOMContentLoaded', () => {
             closeModal(modalDisplayEl);
             // re-render with current filters (re-apply filters to keep behavior)
             applyFilters();
+            updateDisplayButton();
         });
     }
+
+    // Ensure display button reflects initial state
+    updateDisplayButton();
 
     // Header search: live update the keyword filter (light debounce)
     if (headerSearch) {
