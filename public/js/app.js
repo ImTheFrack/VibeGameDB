@@ -71,8 +71,29 @@ document.addEventListener('DOMContentLoaded', () => {
         formGame.reset();
         document.getElementById('modal-game-title').textContent = 'Add Game';
         formGame.dataset.gameId = '';
+        document.getElementById('link-game-section').style.display = 'none';
         openModal(modalGame);
     });
+
+    // Show/hide link game section based on game type
+    const gameTypeRadios = document.querySelectorAll('input[name="game_type"]');
+    gameTypeRadios.forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            const linkSection = document.getElementById('link-game-section');
+            linkSection.style.display = e.target.value !== 'original' ? 'block' : 'none';
+        });
+    });
+
+    // Link game button (dummy function for now)
+    const btnLinkGame = document.getElementById('btn-link-game');
+    if (btnLinkGame) {
+        btnLinkGame.addEventListener('click', (e) => {
+            e.preventDefault();
+            const relatedGameInput = formGame.querySelector('input[name="related_game_id"]');
+            alert('Link game feature coming soon! For now, you can manually enter the game ID.');
+            // TODO: Implement game search/link functionality
+        });
+    }
 
     btnAddPlatform.addEventListener('click', () => {
         formPlatform.reset();
@@ -97,13 +118,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const tagsStr = formData.get('tags') || '';
         const tags = tagsStr.split(',').map(t => t.trim()).filter(t => t.length > 0);
 
+        const gameType = formData.get('game_type');
         const gameData = {
             name: formData.get('name'),
             description: formData.get('description'),
             cover_image_url: formData.get('cover_image_url'),
             trailer_url: formData.get('trailer_url'),
-            is_remake: formData.get('is_remake') === 'on',
-            is_remaster: formData.get('is_remaster') === 'on',
+            is_remake: gameType === 'remake',
+            is_remaster: gameType === 'remaster',
+            related_game_id: gameType !== 'original' ? (formData.get('related_game_id') || null) : null,
             tags: tags
         };
 
@@ -197,16 +220,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const platformId = formData.get('platform_id');
         const acquisitionMethod = formData.get('acquisition_method') || null;
         
-        // Get selected formats from checkboxes
-        const digitalCheckbox = document.querySelector('input[name="format_digital"]:checked');
-        const physicalCheckbox = document.querySelector('input[name="format_physical"]:checked');
-        
-        // Also check for disabled checkboxes (single format platforms)
+        // Get selected formats from checkboxes (only checked ones, not disabled)
         const allFormatCheckboxes = document.querySelectorAll('#format-checkbox-group input[type="checkbox"]');
         const selectedFormats = [];
         
         allFormatCheckboxes.forEach(cb => {
-            if (cb.checked || cb.disabled) {
+            // Only include if explicitly checked (not just because it's disabled)
+            if (cb.checked && !cb.disabled) {
+                selectedFormats.push(cb.value === 'true');
+            }
+            // For disabled checkboxes, only include if it's the only option
+            else if (cb.disabled && cb.checked) {
                 selectedFormats.push(cb.value === 'true');
             }
         });
@@ -216,8 +240,11 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        // Deduplicate formats (in case both digital and physical are selected)
+        const uniqueFormats = [...new Set(selectedFormats)];
+
         // Create a game_platform entry for each selected format
-        const requests = selectedFormats.map(isDigital => {
+        const requests = uniqueFormats.map(isDigital => {
             const gamePlatformData = {
                 game_id: currentGameId,
                 platform_id: platformId,
@@ -233,13 +260,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const responses = await Promise.all(requests);
+            const errors = [];
             for (const res of responses) {
                 if (!res.ok) {
                     const err = await res.json();
-                    alert(`Error: ${err.error || 'Failed to add game to platform'}`);
-                    return;
+                    // Skip "already exists" errors - it's fine if the combination already exists
+                    if (!err.error.includes('already exists')) {
+                        errors.push(err.error || 'Failed to add game to platform');
+                    }
                 }
             }
+            
+            if (errors.length > 0) {
+                alert(`Error: ${errors[0]}`);
+                return;
+            }
+            
             closeModal(modalAddToPlatform);
             await populatePlatformFilters();
             if (currentTab === 'games') fetchGames();
@@ -294,8 +330,27 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Initial load: fetch platforms, populate filters, then fetch games
+    // Initial load: check if database is empty and seed if needed
     (async () => {
+        try {
+            // Check if database is empty
+            const checkRes = await apiGet('/plugins/seed_handler/check');
+            if (checkRes && checkRes.empty) {
+                // Database is empty, seed it with test data
+                const seedRes = await fetch('/plugins/seed_handler/seed', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                if (seedRes.ok) {
+                    const seedData = await seedRes.json();
+                    console.log('Database seeded with test data:', seedData);
+                }
+            }
+        } catch (err) {
+            console.error('Error checking/seeding database:', err);
+        }
+        
+        // Now load the data
         await populatePlatformFilters();
         fetchGames();
     })();

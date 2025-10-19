@@ -113,8 +113,18 @@
                 <label>Description<textarea name="description"></textarea></label>
                 <label>Cover Image URL<input type="url" name="cover_image_url"></label>
                 <label>Trailer URL<input type="url" name="trailer_url"></label>
-                <label><input type="checkbox" name="is_remake"> This is a remake</label>
-                <label><input type="checkbox" name="is_remaster"> This is a remaster</label>
+                <div class="inline-radios">
+                    <span>Type:</span>
+                    <label><input type="radio" name="game_type" value="original" checked> Original</label>
+                    <label><input type="radio" name="game_type" value="remake"> Remake</label>
+                    <label><input type="radio" name="game_type" value="remaster"> Remaster</label>
+                </div>
+                <div id="link-game-section" style="display:none;">
+                    <label>Link to Original Game
+                        <input type="text" name="related_game_id" placeholder="Enter game ID or name">
+                    </label>
+                    <button type="button" id="btn-link-game" class="btn btn-sm">Find & Link</button>
+                </div>
                 <label>Tags (comma-separated)<input type="text" name="tags" placeholder="e.g., action, RPG, indie"></label>
                 <div class="modal-actions">
                     <button type="submit" class="btn btn-primary">Save</button>
