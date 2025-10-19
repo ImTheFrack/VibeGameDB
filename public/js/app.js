@@ -323,6 +323,13 @@ document.addEventListener('DOMContentLoaded', () => {
         btnFilter.addEventListener('click', async () => {
             await populateFilterModal();
             openModal(modalFilter);
+            // Focus the keyword input so the user can start typing immediately
+            const kw = document.getElementById('filter-keyword');
+            if (kw) {
+                kw.focus();
+                // place cursor at end
+                try { kw.selectionStart = kw.selectionEnd = kw.value.length; } catch (e) {}
+            }
         });
     }
 
@@ -565,11 +572,11 @@ function applyFilters() {
             );
           } else {
             const words = raw.split(/\s+/).filter(Boolean);
-            filtered = filtered.filter(game => {
-              const hay = ((game.name || '') + ' ' + (game.description || '')).toLowerCase();
-              // All words must appear somewhere (AND)
-              return words.every(w => hay.includes(w));
-            });
+                            filtered = filtered.filter(game => {
+                                    const hay = ((game.name || '') + ' ' + (game.description || '') + ' ' + ((game.tags || []).join(' '))).toLowerCase();
+                                    // All words must appear somewhere (AND)
+                                    return words.every(w => hay.includes(w));
+                            });
           }
         }
     }

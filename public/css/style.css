@@ -35,7 +35,7 @@ body{
 .search-help{font-size:12px;color:var(--muted);margin-top:6px}
 
 /* Small circular help icon with tooltip */
-.help-icon{width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.06);cursor:default;color:var(--muted);position:relative}
+.help-icon{width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,0.12);cursor:default;color:var(--text);background:rgba(255,255,255,0.02);position:relative}
 .help-icon:focus{outline:2px solid rgba(79,142,247,0.3)}
 .help-tooltip{display:none;position:absolute;top:26px;left:50%;transform:translateX(-50%);background:var(--panel);color:var(--text);padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.03);white-space:nowrap;font-size:12px;z-index:200}
 .help-icon:hover .help-tooltip,.help-icon:focus .help-tooltip{display:block}
