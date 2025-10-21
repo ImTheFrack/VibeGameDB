@@ -4,6 +4,7 @@ import { apiGet } from './api.js';
 import { renderPlatforms } from './render.js';
 import { applyFilters, extractAllTags, updateActiveFiltersDisplay } from './filters.js';
 import { openModal, closeModal, populateFilterModal, populateAddToPlatformForm } from './modals.js';
+import { initImportModal } from './modals.js';
 
 /**
  * Event wiring and data loaders.
@@ -94,6 +95,14 @@ export function wireDomEvents() {
 
   // Import CSV
   btnImportCSV.addEventListener('click', () => openModal(modalImport));
+  // initialize import modal helpers
+  try { initImportModal(); } catch (e) { console.warn('Import modal init failed', e); }
+
+  // Refresh data when import completes
+  window.addEventListener('vgd:import_complete', async () => {
+    await populatePlatformFilters();
+    if (state.currentTab === 'games') fetchGames(); else fetchPlatforms();
+  });
 
   // Submit: Game
   formGame.addEventListener('submit', async (e) => {
@@ -202,8 +211,7 @@ export function wireDomEvents() {
     const allFormatCheckboxes = document.querySelectorAll('#format-checkbox-group input[type="checkbox"]');
     const selectedFormats = [];
     allFormatCheckboxes.forEach(cb => {
-      if (cb.checked && !cb.disabled) selectedFormats.push(cb.value === 'true');
-      else if (cb.disabled && cb.checked) selectedFormats.push(cb.value === 'true');
+      if (cb.checked) selectedFormats.push(cb.value === 'true');
     });
     if (selectedFormats.length === 0) {
       alert('Please select at least one format (Digital or Physical)');

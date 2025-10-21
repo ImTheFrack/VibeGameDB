@@ -172,15 +172,35 @@
 
     <!-- CSV Import Modal -->
     <div id="modal-import" class="modal" aria-hidden="true">
-        <div class="modal-content">
+        <div class="modal-content" style="max-width:90vw;width:90vw;">
             <header class="modal-header">
                 <h2>Import from CSV</h2>
                 <button class="modal-close" data-close>&times;</button>
             </header>
-            <div class="modal-body">
-                <input id="csv-file-input" type="file" accept="text/csv" />
-                <p class="muted">Upload a CSV file of games. You will be able to map columns before importing.</p>
-                <textarea id="csv-preview" rows="8" placeholder="Preview / mapping will appear here" readonly></textarea>
+            <div class="modal-body" style="display:flex;flex-direction:column;gap:12px;max-height:85vh;overflow-y:auto;">
+                <div>
+                    <input id="csv-file-input" type="file" accept="text/csv" />
+                    <p class="muted">Upload a CSV file or paste CSV text. You will be able to map columns before importing.</p>
+                </div>
+                <textarea id="csv-textarea" rows="6" placeholder="Paste CSV here or choose a file" style="width:100%;box-sizing:border-box;"></textarea>
+                <div>
+                    <h4>Column Mapping</h4>
+                    <div id="csv-mapping" class="csv-mapping" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+                        <!-- Mapping UI will be injected here: header -> db field select -->
+                    </div>
+                </div>
+                <div>
+                    <h4>Preview</h4>
+                    <div id="csv-preview-table" style="max-height:200px;overflow:auto;border:1px solid var(--muted);padding:6px;background:var(--panel-bg);"></div>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <label style="white-space:nowrap">On duplicate:</label>
+                    <select id="import-duplicate-policy">
+                        <option value="create_new">Create new</option>
+                        <option value="skip">Skip</option>
+                        <option value="merge">Merge</option>
+                    </select>
+                </div>
                 <div class="modal-actions">
                     <button id="btn-run-import" class="btn btn-primary">Run Import</button>
                     <button class="btn" data-close>Close</button>

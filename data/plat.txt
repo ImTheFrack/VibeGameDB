@@ -1,0 +1,42 @@
+Steam
+EGS
+Amazon
+GOG
+Legacy
+Origin
+uPlay
+MS
+Oculus
+PS5
+XSX
+Switch
+PS4
+XBOne
+Vita
+PS3
+X360
+Wii
+3DS
+PSP
+Xbox
+GC
+PS2
+3DO
+Genesis
+Famicom
+Epic Games Store
+PlayStation 5
+Xbox Series X
+Nintendo Switch
+PlayStation 4
+Xbox One
+PlayStation Vita
+PlayStation 3
+Xbox 360
+Nintendo Wii
+Nintendo 3DS
+PlayStation Portable
+Sega Genesis
+GameCube
+PlayStation 2
+Atari 3DO
