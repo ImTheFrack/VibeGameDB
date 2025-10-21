@@ -18,30 +18,36 @@
 │                         (renders)                                 │
 │                              │                                    │
 │  ┌──────────────────────────────────────────────────────────┐   │
-│  │            public/js/app.js (Frontend Logic)             │   │
+│  │            public/js/main.js (Entry, ES Modules)         │   │
 │  │                                                           │   │
-│  │  Modal Management:                                        │   │
-│  │  - openModal() / closeModal()                             │   │
-│  │  - Click handlers for buttons                             │   │
+│  │  Modules & Responsibilities:                               │   │
+│  │  - main.js: bootstraps app, loads config, seeds DB,       │   │
+│  │    initializes events, ensures Games tab selected         │   │
+│  │  - state.js: centralized state (games/platforms/filters)  │   │
+│  │  - api.js: fetch helpers for plugin endpoints             │   │
+│  │  - render.js: renderGames/renderPlatforms                 │   │
+│  │  - filters.js: extractAllTags/applyFilters/UI counts      │   │
+│  │  - modals.js: modal helpers, filter/add-to-platform UI    │   │
+│  │  - events.js: DOM wiring, form submit handlers, tabs      │   │
 │  │                                                           │   │
-│  │  Form Handlers:                                           │   │
-│  │  - formGame.addEventListener('submit', ...)              │   │
-│  │  - formPlatform.addEventListener('submit', ...)          │   │
+│  │  Form Handlers (via events.js):                           │   │
+│  │  - formGame.addEventListener('submit', ...)               │   │
+│  │  - formPlatform.addEventListener('submit', ...)           │   │
 │  │                                                           │   │
-│  │  API Calls:                                               │   │
-│  │  - fetchGames() → GET /plugins/database_handler/games    │   │
-│  │  - fetchPlatforms() → GET /plugins/database_handler/...  │   │
-│  │  - POST/PUT to create/update games and platforms         │   │
+│  │  API Calls (via api.js):                                  │   │
+│  │  - fetchGames() → GET /plugins/database_handler/games     │   │
+│  │  - fetchPlatforms() → GET /plugins/database_handler/...   │   │
+│  │  - POST/PUT to create/update games and platforms          │   │
 │  │                                                           │   │
-│  │  Rendering:                                               │   │
+│  │  Rendering (via render.js):                               │   │
 │  │  - renderGames(data)                                      │   │
 │  │  - renderPlatforms(data)                                  │   │
 │  │                                                           │   │
-│  │  Filtering & Display:                                     │   │
-│  │  - applyFilters() — multi-criteria filtering              │   │
-│  │  - populateFilterModal() — populate filter options        │   │
-│  │  - updateActiveFiltersDisplay() — show active filters     │   │
-│  │  - applyDisplayOptions() — show/hide card elements        │   │
+│  │  Filtering & Display (via filters.js & modals.js):         │   │
+│  │  - applyFilters() — multi-criteria filtering               │   │
+│  │  - populateFilterModal() — populate filter options         │   │
+│  │  - updateActiveFiltersDisplay() — show active filters      │   │
+│  │  - displayOptions stored in state; applied by render.js    │   │
 │  └──────────────────────────────────────────────────────────┘   │
 │                              ▲                                    │
 │                              │                                    │

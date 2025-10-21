@@ -9,7 +9,13 @@ This repository contains a small Python stdlib HTTP server (`main.py`) which ser
 - `public/` — frontend single-page app shell and static assets:
   - `index.html` — SPA shell with header, search, tabs, controls, and modals (templates)
   - `css/style.css` — dark theme styles
-  - `js/app.js` — frontend behavior, event handlers, and fetch calls
+   - `js/main.js` — ES module entry point that wires the app together
+   - `js/state.js` — centralized state (games, platforms, filters, display options)
+   - `js/api.js` — tiny fetch helpers for plugin endpoints
+   - `js/render.js` — render functions for games and platforms
+   - `js/filters.js` — filter logic and active filter display
+   - `js/modals.js` — modal open/close helpers and modal population
+   - `js/events.js` — DOM event wiring and form handlers
   - `img/` — local SVG placeholder images that can be used by examples
 - `handlers/` — plugin modules (each exports `handle(req)`):
   - `config_handler.py` - reads config.values and exposes it under the plugin loaders

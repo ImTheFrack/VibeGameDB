@@ -16,7 +16,7 @@ Goals for edits
 Quick project map
 -----------------
 - `main.py` — HTTP server and plugin loader. Key helpers: `_send()`, `send_text()`, `send_json()`, `parse_body_json()`.
-- `public/` — static SPA files (served as DOC_ROOT): `index.html`, `css/style.css`, `js/app.js`, `img/`.
+- `public/` — static SPA files (served as DOC_ROOT): `index.html`, `css/style.css`, `js/main.js`, `img/`.
 - `handlers/` — plugin modules, each must expose `handle(req)`.
   - `database_handler.py` — CRUD endpoints for games, platforms and `game_platforms` junctions.
   - `import_handler.py` — CSV import logic (placeholder to extend).
@@ -27,7 +27,8 @@ Quick project map
 What to inspect before changing behavior
 ---------------------------------------
 - `main.py` for server bootstrapping, request parsing, and plugin loader caching/locking behavior.
-- `public/js/app.js` for frontend state shapes and functions: `renderGames()`, `populateFilterModal()`, `applyFilters()`, `applyDisplayOptions()`, and how `currentFilters` and `displayOptions` are used.
+- `public/js/main.js` and all of the nested ES scripts .js for frontend state shapes and functions: `renderGames()`, `populateFilterModal()`, `applyFilters()`, `applyDisplayOptions()`, and how `currentFilters` and `displayOptions` are used.
+ - `public/js/main.js` and all nested ES modules for frontend state shapes and functions: `renderGames()`, `populateFilterModal()`, `applyFilters()`, and how `currentFilters` and `displayOptions` are used. Display options are applied within rendering logic.
 - `handlers/database_handler.py` to confirm data shapes returned by `GET` endpoints (games, platforms, game_platforms) and expected POST/PUT payloads.
 - `ARCHITECTURE.md` and `README.md` — authoritative description of implemented features (filtering, display controls, game_platforms).
 
@@ -102,6 +103,7 @@ Frontend features to be aware of (already implemented)
 -----------------------------------------------------
 - Modal-based multi-criteria filtering on the Games tab (keyword, platform, tags). State object: `currentFilters = { keyword: '', platforms: [], tags: [] }`.
 - Display controls modal for toggling which card elements are shown. State object: `displayOptions = { show_cover, show_title, show_description, show_tags, show_platforms }
+ - Display controls modal for toggling which card elements are shown. State object: `displayOptions = { show_cover, show_title, show_description, show_tags, show_platforms }`
 - Clickable "pills" on game cards to quickly apply/remove filters.
 - Smart tab UI: Filter button is only visible on the Games tab.
 
@@ -109,7 +111,7 @@ When editing frontend code
 -------------------------
 - Keep the `currentFilters` and `displayOptions` objects consistent and avoid renaming their properties without updating all usages.
 - Use `populateFilterModal()` to source platforms (from `/plugins/database_handler/platforms`) and tags (extracted from `games`).
-- If you change the format of a games or platforms response, update `app.js` and `ARCHITECTURE.md`/`README.md` together.
+- If you change the format of a games or platforms response, update the frontend modules (e.g., `render.js`, `filters.js`, `modals.js`) and `ARCHITECTURE.md`/`README.md` together.
 
 Security, side-effects and concurrency
 -------------------------------------
