@@ -318,6 +318,40 @@ class RequestHandler(BaseHTTPRequestHandler):
         else:
             self.send_text("Not Found", status=404)
 
+    def do_PUT(self):
+        parsed = urlparse(self.path)
+        path = parsed.path
+        if path.startswith("/plugins/"):
+            rest = path[len("/plugins/"):]
+            name = rest.split("/", 1)[0]
+            subpath = "/" + rest.split("/", 1)[1] if "/" in rest else ""
+            if name and self._serve_plugin(name, subpath):
+                return
+        self.send_text("Method Not Allowed", status=405)
+
+    def do_PATCH(self):
+        # Treat PATCH the same as PUT for our plugin system
+        parsed = urlparse(self.path)
+        path = parsed.path
+        if path.startswith("/plugins/"):
+            rest = path[len("/plugins/"):]
+            name = rest.split("/", 1)[0]
+            subpath = "/" + rest.split("/", 1)[1] if "/" in rest else ""
+            if name and self._serve_plugin(name, subpath):
+                return
+        self.send_text("Method Not Allowed", status=405)
+
+    def do_DELETE(self):
+        parsed = urlparse(self.path)
+        path = parsed.path
+        if path.startswith("/plugins/"):
+            rest = path[len("/plugins/"):]
+            name = rest.split("/", 1)[0]
+            subpath = "/" + rest.split("/", 1)[1] if "/" in rest else ""
+            if name and self._serve_plugin(name, subpath):
+                return
+        self.send_text("Method Not Allowed", status=405)
+
     def do_HEAD(self):
         parsed = urlparse(self.path)
         path = parsed.path

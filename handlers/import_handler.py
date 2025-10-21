@@ -108,6 +108,18 @@ def _guess_mapping(headers: List[str], known_platforms: Optional[Dict[str, str]]
     if known_platforms is None:
         known_platforms = _load_known_platforms()
     
+    # Load existing platforms from DB to check if a known platform already exists
+    existing_platforms = {}
+    try:
+        conn = _get_conn()
+        cur = conn.cursor()
+        cur.execute('SELECT id, name FROM platforms')
+        for row in cur.fetchall():
+            existing_platforms[row['id']] = row['name']
+        conn.close()
+    except Exception:
+        pass
+    
     mapping = {}
     for h in headers:
         lower = (h or '').strip().lower()
@@ -133,7 +145,13 @@ def _guess_mapping(headers: List[str], known_platforms: Optional[Dict[str, str]]
             if lower in known_platforms:
                 canonical_name = known_platforms[lower]
                 platform_id = canonical_name.lower().replace(' ', '_').replace('-', '_')
-                mapping[h] = f'platform:NEW:{canonical_name}'
+                # Check if this platform already exists in the database
+                if platform_id in existing_platforms:
+                    # Map to existing platform
+                    mapping[h] = f'platform:{platform_id}'
+                else:
+                    # Map to create new platform
+                    mapping[h] = f'platform:NEW:{canonical_name}'
             else:
                 # leave unmapped by default; frontend can map to platform
                 mapping[h] = ''
@@ -332,12 +350,30 @@ def handle(req: Dict[str, Any]):
         created_games = 0
         created_links = 0
         errors = []
+
+        # --- OPTIMIZATION: Pre-fetch existing data to avoid N+1 queries ---
+        existing_games_by_name = {}
+        if options.get('on_duplicate') in ('skip', 'merge'):
+            try:
+                conn_check = _get_conn()
+                cur_check = conn_check.cursor()
+                cur_check.execute('SELECT id, name, description, tags FROM games')
+                for row in cur_check.fetchall():
+                    existing_games_by_name[row['name']] = dict(row)
+                conn_check.close()
+            except Exception as e:
+                errors.append({'row': 0, 'error': f'Failed to pre-fetch games: {e}'})
+
         try:
             # Use a single transaction for all imports
             conn.execute('BEGIN TRANSACTION')
             
             # Cache for platform lookups to avoid repeated DB queries
             platform_cache = {}
+
+            # --- OPTIMIZATION: Batch inserts ---
+            games_to_insert = []
+            links_to_insert = []
             
             for rnum, row in enumerate(data_rows, start=1):
                 # build game object and platform links from mapping
@@ -418,12 +454,66 @@ def handle(req: Dict[str, Any]):
                     else:
                         game_obj[mapped] = coerced
 
+                # --- OPTIMIZATION: Handle duplicates in memory first ---
+                game_name = game_obj.get('name')
+                if not game_name:
+                    errors.append({'row': rnum, 'error': 'Missing game name'})
+                    continue
+
+                existing_game = existing_games_by_name.get(game_name)
+                on_duplicate = options.get('on_duplicate', 'create_new')
+
+                if existing_game:
+                    if on_duplicate == 'skip':
+                        continue # Skip this row entirely
+                    elif on_duplicate == 'merge':
+                        # For now, we'll stick to the original per-row update for merge,
+                        # as batch updating is more complex. But we can still batch the links.
+                        gid, created, links = _insert_game_and_links(conn, game_obj, platform_links, options, platform_cache)
+                        created_games += created
+                        created_links += links
+                        continue
+                
+                # If we are here, it's a new game to be created.
+                games_to_insert.append((
+                    game_obj.get('name'),
+                    game_obj.get('description'),
+                    game_obj.get('cover_image_url'),
+                    game_obj.get('trailer_url'),
+                    int(bool(game_obj.get('is_remake'))),
+                    int(bool(game_obj.get('is_remaster'))),
+                    game_obj.get('related_game_id'),
+                    json.dumps(game_obj.get('tags') or [])
+                ))
+                # Stage the links with a placeholder for the game_id
+                for link in platform_links:
+                    link['staged_game_name'] = game_obj.get('name')
+                    links_to_insert.append(link)
+
+            # --- OPTIMIZATION: Perform batch inserts ---
+            if games_to_insert:
                 try:
-                    gid, created, links = _insert_game_and_links(conn, game_obj, platform_links, options, platform_cache)
-                    created_games += created
-                    created_links += links
+                    # Batch insert games
+                    cur = conn.cursor()
+                    cur.executemany('INSERT INTO games (name, description, cover_image_url, trailer_url, is_remake, is_remaster, related_game_id, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', games_to_insert)
+                    created_games = cur.rowcount
+
+                    # Now that games are inserted, create a map of name -> new_id
+                    cur.execute('SELECT id, name FROM games WHERE name IN ({})'.format(','.join('?' for _ in games_to_insert)), [g[0] for g in games_to_insert])
+                    new_game_ids = {row['name']: row['id'] for row in cur.fetchall()}
+
+                    # Batch insert links
+                    final_links = []
+                    for link in links_to_insert:
+                        gid = new_game_ids.get(link['stagem_game_name'])
+                        if not gid: continue
+                        # This part is still iterative due to platform checks, but the game insert is batched.
+                        # A more advanced version could batch these too.
+                        _, _, links_created = _insert_game_and_links(conn, {'name': link['staged_game_name']}, [link], {'on_duplicate': 'merge'}, platform_cache)
+                        created_links += links_created
+
                 except Exception as e:
-                    errors.append({'row': rnum, 'error': str(e)})
+                    errors.append({'row': 0, 'error': f'Batch insert failed: {e}'})
             
             # Commit the entire transaction at the end
             conn.commit()

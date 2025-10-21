@@ -78,6 +78,20 @@ export function applyFilters() {
   }
 
   renderGames(filtered);
+  updateTabCounts(filtered.length);
+}
+
+/**
+ * Updates the count display in the 'Games' and 'Platforms' tabs.
+ * @param {number} [gamesCount] - The number of games to display. If not provided, it won't be updated.
+ */
+export function updateTabCounts(gamesCount) {
+  const gamesTabCount = document.querySelector('.tab[data-tab="games"] .tab-count');
+  if (gamesTabCount && typeof gamesCount !== 'undefined') {
+    gamesTabCount.textContent = `(${gamesCount})`;
+  }
+  const platformsTabCount = document.querySelector('.tab[data-tab="platforms"] .tab-count');
+  if (platformsTabCount) platformsTabCount.textContent = `(${state.allPlatforms.length})`;
 }
 
 export function updateActiveFiltersDisplay() {

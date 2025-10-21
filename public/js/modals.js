@@ -1,6 +1,6 @@
 'use strict';
 import { state } from './state.js';
-import { apiGet, fetchPlatformsFromServer } from './api.js';
+import { fetchPlatforms as fetchPlatformsFromApi, fetchGamePlatforms as fetchGamePlatformsFromApi } from './api.js';
 
 /**
  * Modal helpers and population routines.
@@ -21,38 +21,113 @@ export function closeModal(modal) {
 }
 
 export async function populateFilterModal() {
-  // Platforms
+  // --- Platforms ---
   const platformsContainer = document.getElementById('filter-platforms');
-  if (platformsContainer) {
-    platformsContainer.innerHTML = '';
-    state.allPlatforms.forEach(p => {
-      const label = document.createElement('label');
-      const input = document.createElement('input');
-      input.type = 'checkbox';
-      input.value = String(p.id);
-      input.checked = state.currentFilters.platforms.includes(String(p.id));
-      label.appendChild(input);
-      label.appendChild(document.createTextNode(p.name));
-      platformsContainer.appendChild(label);
-    });
+  const platformSortSelect = document.getElementById('filter-platform-sort-select');
+  if (platformsContainer && platformSortSelect) {
+    const platformCounts = state.allGamePlatforms.reduce((acc, gp) => {
+      acc[gp.platform_id] = (acc[gp.platform_id] || 0) + 1;
+      return acc;
+    }, {});
+
+    const renderPlatforms = () => {
+      platformsContainer.innerHTML = '';
+      let sortedPlatforms = [...state.allPlatforms];
+      const sortMethod = platformSortSelect.value;
+
+      sortedPlatforms.sort((a, b) => {
+        const countA = platformCounts[a.id] || 0;
+        const countB = platformCounts[b.id] || 0;
+        switch (sortMethod) {
+          case 'name_desc': return b.name.localeCompare(a.name);
+          case 'count_asc': return countA - countB;
+          case 'count_desc': return countB - countA;
+          case 'name_asc':
+          default: return a.name.localeCompare(b.name);
+        }
+      });
+
+      sortedPlatforms.forEach(p => {
+        const count = platformCounts[p.id] || 0;
+        const inputId = `filter-plat-${p.id}`;
+        const isChecked = state.currentFilters.platforms.includes(String(p.id));
+        platformsContainer.innerHTML += `
+          <input type="checkbox" value="${p.id}" id="${inputId}" ${isChecked ? 'checked' : ''}>
+          <label for="${inputId}">
+            <span class="pill-box">${isChecked ? '✓' : ''}</span> ${p.name} <span class="pill-count">(${count})</span>
+          </label>
+        `;
+      });
+      updatePillEventListeners('#filter-platforms');
+    };
+
+    platformSortSelect.removeEventListener('change', renderPlatforms);
+    platformSortSelect.addEventListener('change', renderPlatforms);
+    renderPlatforms();
   }
 
-  // Tags
+  // --- Tags ---
   const tagsContainer = document.getElementById('filter-tags');
-  if (tagsContainer) {
-    tagsContainer.innerHTML = '';
-    state.allTags.forEach(tag => {
-      const label = document.createElement('label');
-      const input = document.createElement('input');
-      input.type = 'checkbox';
-      input.value = String(tag);
-      input.checked = state.currentFilters.tags.includes(String(tag));
-      label.appendChild(input);
-      label.appendChild(document.createTextNode(tag));
-      tagsContainer.appendChild(label);
+  const tagSortSelect = document.getElementById('filter-tag-sort-select');
+  if (tagsContainer && tagSortSelect) {
+    const tagCounts = {};
+    state.allGames.forEach(game => {
+      if (game.tags && Array.isArray(game.tags)) {
+        game.tags.forEach(tag => {
+          tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+        });
+      }
+    });
+
+    const renderTags = () => {
+      tagsContainer.innerHTML = '';
+      let sortedTags = [...state.allTags];
+      const sortMethod = tagSortSelect.value;
+
+      sortedTags.sort((a, b) => {
+        const countA = tagCounts[a] || 0;
+        const countB = tagCounts[b] || 0;
+        switch (sortMethod) {
+          case 'name_desc': return b.localeCompare(a);
+          case 'count_asc': return countA - countB;
+          case 'count_desc': return countB - countA;
+          case 'name_asc':
+          default: return a.localeCompare(b);
+        }
+      });
+
+      sortedTags.forEach(tag => {
+        const count = tagCounts[tag] || 0;
+        const inputId = `filter-tag-${tag.replace(/[^a-zA-Z0-9]/g, '')}`;
+        const isChecked = state.currentFilters.tags.includes(String(tag));
+        tagsContainer.innerHTML += `
+          <input type="checkbox" value="${tag}" id="${inputId}" ${isChecked ? 'checked' : ''}>
+          <label for="${inputId}">
+            <span class="pill-box">${isChecked ? '✓' : ''}</span> ${tag} <span class="pill-count">(${count})</span>
+          </label>
+        `;
+      });
+      updatePillEventListeners('#filter-tags');
+    };
+
+    tagSortSelect.removeEventListener('change', renderTags);
+    tagSortSelect.addEventListener('change', renderTags);
+    renderTags();
+  }
+
+  // --- Helper to wire up pill checkmark logic ---
+  function updatePillEventListeners(containerSelector) {
+    document.querySelectorAll(`${containerSelector} input[type="checkbox"]`).forEach(checkbox => {
+      // This is a bit inefficient as it re-adds listeners, but it's simple and effective for now.
+      // A more robust solution would use event delegation.
+      checkbox.addEventListener('change', (e) => {
+        const box = e.target.nextElementSibling.querySelector('.pill-box');
+        if (box) box.textContent = e.target.checked ? '✓' : '';
+      });
     });
   }
 
+  // --- Populate other filter fields ---
   const keywordInput = document.getElementById('filter-keyword');
   if (keywordInput) keywordInput.value = state.currentFilters.keyword;
 
@@ -69,37 +144,99 @@ export async function populateFilterModal() {
 
 export async function populateAddToPlatformForm() {
   // Use existing state if available, otherwise fetch.
-  const platforms = state.allPlatforms.length > 0 ? state.allPlatforms : (await fetchPlatformsFromServer())?.platforms || [];
+  let platforms = state.allPlatforms;
+  if (platforms.length === 0) {
+    const data = await fetchPlatformsFromApi();
+    if (data) state.allPlatforms = data.platforms || [];
+  }
   if (platforms.length === 0) return;
-
+  // --- Platform Pills ---
   const platformGroup = document.getElementById('platform-radio-group');
-  if (!platformGroup) return;
+  const sortSelect = document.getElementById('platform-sort-select');
+  if (!platformGroup || !sortSelect) return;
 
-  platformGroup.innerHTML = '';
+  // Calculate game counts for each platform
+  const gameCounts = state.allGamePlatforms.reduce((acc, gp) => {
+    acc[gp.platform_id] = (acc[gp.platform_id] || 0) + 1;
+    return acc;
+  }, {});
 
-  platforms.forEach((p, idx) => {
-    const label = document.createElement('label');
-    const input = document.createElement('input');
-    input.type = 'radio';
-    input.name = 'platform_id';
-    input.value = p.id;
-    input.required = true;
-    if (idx === 0) input.checked = true;
+  const renderPlatforms = () => {
+    platformGroup.innerHTML = '';
+    let sortedPlatforms = [...platforms];
+    const sortMethod = sortSelect.value;
 
-    label.appendChild(input);
-    label.appendChild(document.createTextNode(p.name));
-    platformGroup.appendChild(label);
+    sortedPlatforms.sort((a, b) => {
+      const countA = gameCounts[a.id] || 0;
+      const countB = gameCounts[b.id] || 0;
+      switch (sortMethod) {
+        case 'name_desc': return b.name.localeCompare(a.name);
+        case 'count_asc': return countA - countB;
+        case 'count_desc': return countB - countA;
+        case 'name_asc':
+        default: return a.name.localeCompare(b.name);
+      }
+    });
 
-    input.addEventListener('change', () => updateFormatOptions(p));
-  });
+    sortedPlatforms.forEach((p, idx) => {
+      const count = gameCounts[p.id] || 0;
+      const inputId = `plat-radio-${p.id}`;
+      const pill = document.createElement('div');
+      pill.innerHTML = `
+        <input type="radio" name="platform_id" value="${p.id}" id="${inputId}" required ${idx === 0 ? 'checked' : ''}>
+        <label for="${inputId}">
+          <span class="pill-box">${idx === 0 ? '✓' : ''}</span>
+          ${p.name}
+          <span class="pill-count">(${count})</span>
+        </label>
+      `;
+      platformGroup.appendChild(pill.firstElementChild);
+      platformGroup.appendChild(pill.lastElementChild);
+    });
 
-  if (platforms.length > 0) updateFormatOptions(platforms[0]);
+    // Add event listeners after rendering
+    platformGroup.querySelectorAll('input[type="radio"]').forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        // Update checkmark visuals
+        platformGroup.querySelectorAll('.pill-box').forEach(box => box.textContent = '');
+        e.target.nextElementSibling.querySelector('.pill-box').textContent = '✓';
+        // Update format options
+        const selectedPlatform = sortedPlatforms.find(p => p.id === e.target.value);
+        if (selectedPlatform) updateFormatOptions(selectedPlatform);
+      });
+    });
+
+    if (sortedPlatforms.length > 0) updateFormatOptions(sortedPlatforms[0]);
+  };
+
+  sortSelect.removeEventListener('change', renderPlatforms); // Avoid duplicate listeners
+  sortSelect.addEventListener('change', renderPlatforms);
+  renderPlatforms();
+
+  // --- Acquisition Method Pills ---
+  const acqGroup = document.getElementById('acquisition-method-group');
+  if (acqGroup) {
+    acqGroup.innerHTML = '';
+    const methods = [
+      { value: 'bought', emoji: '💰', text: 'Bought' },
+      { value: 'free', emoji: '🆓', text: 'Free' },
+      { value: 'bundle', emoji: '🎁', text: 'Bundle' },
+      { value: 'gift', emoji: '💝', text: 'Gift' },
+      { value: 'subscription', emoji: '🔄', text: 'Sub' }
+    ];
+    methods.forEach((m, idx) => {
+      const inputId = `acq-radio-${m.value}`;
+      acqGroup.innerHTML += `
+        <input type="radio" name="acquisition_method" value="${m.value}" id="${inputId}" ${idx === 0 ? 'checked' : ''}>
+        <label for="${inputId}">${m.emoji} ${m.text}</label>
+      `;
+    });
+  }
 }
 
 export function updateFormatOptions(platform) {
   const formatGroup = document.getElementById('format-checkbox-group');
   if (!formatGroup) return;
-
   formatGroup.innerHTML = '';
 
   if (platform.supports_digital && platform.supports_physical) {
@@ -107,44 +244,114 @@ export function updateFormatOptions(platform) {
     const digitalInput = document.createElement('input');
     digitalInput.type = 'checkbox';
     digitalInput.name = 'format';
-    digitalInput.value = 'true';
+    digitalInput.value = 'digital';
     digitalInput.checked = true;
-    digitalLabel.appendChild(digitalInput);
-    digitalLabel.appendChild(document.createTextNode('Digital'));
-    formatGroup.appendChild(digitalLabel);
+    digitalInput.id = 'format-digital';
+    digitalLabel.htmlFor = 'format-digital';
+    digitalLabel.textContent = '📱 Digital';
+    formatGroup.append(digitalInput, digitalLabel);
 
     const physicalLabel = document.createElement('label');
     const physicalInput = document.createElement('input');
     physicalInput.type = 'checkbox';
     physicalInput.name = 'format';
-    physicalInput.value = 'true';
-    physicalLabel.appendChild(physicalInput);
-    physicalLabel.appendChild(document.createTextNode('Physical'));
-    formatGroup.appendChild(physicalLabel);
+    physicalInput.value = 'physical';
+    physicalInput.id = 'format-physical';
+    physicalLabel.htmlFor = 'format-physical';
+    physicalLabel.textContent = '💿 Physical';
+    formatGroup.append(physicalInput, physicalLabel);
   } else if (platform.supports_digital) {
     const label = document.createElement('label');
     const input = document.createElement('input');
     input.type = 'checkbox';
     input.name = 'format';
-    input.value = 'true';
+    input.value = 'digital';
     input.checked = true;
-    input.disabled = true;
-    label.appendChild(input);
-    label.appendChild(document.createTextNode('Digital'));
-    formatGroup.appendChild(label);
+    // input.disabled = true; // Don't disable, just make it non-interactive via CSS
+    input.id = 'format-digital-only';
+    label.htmlFor = 'format-digital-only';
+    label.textContent = '📱 Digital';
+    label.classList.add('pill-forced');
+    formatGroup.append(input, label);
   } else if (platform.supports_physical) {
     const label = document.createElement('label');
     const input = document.createElement('input');
     input.type = 'checkbox';
     input.name = 'format';
-    input.value = 'false';
+    input.value = 'physical';
     input.checked = true;
-    input.disabled = true;
-    label.appendChild(input);
-    label.appendChild(document.createTextNode('Physical'));
-    formatGroup.appendChild(label);
+    // input.disabled = true; // Don't disable, just make it non-interactive via CSS
+    input.id = 'format-physical-only';
+    label.htmlFor = 'format-physical-only';
+    label.textContent = '💿 Physical';
+    label.classList.add('pill-forced');
+    formatGroup.append(input, label);
   }
 }
+
+export async function populateGamePlatformsList(gameId) {
+  const listEl = document.getElementById('game-platforms-list');
+  if (!gameId) {
+    listEl.innerHTML = '<li class="muted">Save the game to associate platforms.</li>';
+    return;
+  }
+  // Ensure we have the latest links
+  const data = await fetchGamePlatformsFromApi();
+  if (data) {
+    state.allGamePlatforms = data.game_platforms || [];
+  }
+  const links = state.allGamePlatforms.filter(gp => String(gp.game_id) === String(gameId));
+  listEl.innerHTML = '';
+  if (links.length === 0) {
+    listEl.innerHTML = '<li class="muted">No platforms associated yet.</li>';
+  } else {
+    links.forEach(link => {
+      const platform = state.allPlatforms.find(p => p.id === link.platform_id);
+      const li = document.createElement('li');
+      const format = link.is_digital ? '📱' : '💿';
+      li.innerHTML = `<span>${format} ${platform?.name || 'Unknown'}</span><span class="remove-item" data-id="${link.id}" title="Remove association">&times;</span>`;
+      listEl.appendChild(li);
+    });
+  }
+}
+
+export async function showEditGameModal(gameId, doOpen = true) {
+  const game = state.allGames.find(g => String(g.id) === String(gameId));
+  if (!game) {
+    alert('Game not found!');
+    return;
+  }
+  const formGame = document.getElementById('form-game');
+  const modalGame = document.getElementById('modal-game');
+
+  formGame.reset();
+  // Set button text for "Edit" mode
+  formGame.querySelector('button[type="submit"]').textContent = 'Save & Close';
+  formGame.dataset.gameId = gameId;
+  document.getElementById('modal-game-title').textContent = 'Edit Game';
+  formGame.querySelector('input[name="name"]').value = game.name || '';
+  formGame.querySelector('textarea[name="description"]').value = game.description || '';
+  formGame.querySelector('input[name="cover_image_url"]').value = game.cover_image_url || '';
+  formGame.querySelector('input[name="trailer_url"]').value = game.trailer_url || '';
+  formGame.querySelector('input[name="tags"]').value = (game.tags || []).join(', ');
+
+  const gameType = game.is_remake ? 'remake' : (game.is_remaster ? 'remaster' : 'original');
+  formGame.querySelector(`input[name="game_type"][value="${gameType}"]`).checked = true;
+  const linkSection = document.getElementById('link-game-section');
+  linkSection.style.display = gameType !== 'original' ? 'block' : 'none';
+  if (game.related_game_id) {
+    formGame.querySelector('input[name="related_game_id"]').value = game.related_game_id;
+  }
+
+  // Show and populate the new platforms section
+  document.getElementById('game-platforms-section').style.display = 'block';
+  await populateGamePlatformsList(gameId);
+  // Show clone/delete button group for "Edit" mode
+  formGame.querySelector('.btn-clone').parentElement.style.display = 'flex';
+
+  if (doOpen) openModal(modalGame);
+}
+
 
 // --- CSV import modal helpers ---
 import { postCsvPreview, postCsvImport, igdbSearch } from './api.js';
@@ -207,7 +414,7 @@ export async function initImportModal() {
   // Fetch platforms once for the mapping UI
   let platforms = [];
   try {
-    const platformData = await fetchPlatformsFromServer();
+    const platformData = await fetchPlatformsFromApi();
     platforms = platformData?.platforms || [];
     console.log('Import modal: loaded platforms', platforms);
   } catch (e) {

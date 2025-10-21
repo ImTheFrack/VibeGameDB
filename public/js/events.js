@@ -1,9 +1,9 @@
 'use strict';
 import { state } from './state.js';
-import { apiGet } from './api.js';
+import { fetchGames as fetchGamesFromApi, fetchPlatforms as fetchPlatformsFromApi, fetchGamePlatforms as fetchGamePlatformsFromApi } from './api.js';
 import { renderPlatforms } from './render.js';
-import { applyFilters, extractAllTags, updateActiveFiltersDisplay } from './filters.js';
-import { openModal, closeModal, populateFilterModal, populateAddToPlatformForm } from './modals.js';
+import { applyFilters, extractAllTags, updateActiveFiltersDisplay, updateTabCounts } from './filters.js';
+import { openModal, closeModal, populateFilterModal, populateAddToPlatformForm, showEditGameModal, populateGamePlatformsList } from './modals.js';
 import { initImportModal } from './modals.js';
 
 /**
@@ -17,6 +17,34 @@ import { initImportModal } from './modals.js';
  * and testable (no direct DOM event concerns there).
  */
 
+// Data loaders used by tab switch and initial load
+async function fetchGames() {
+  const data = await fetchGamesFromApi();
+  if (data) {
+    state.allGames = data.games || [];
+    state.allGamePlatforms = data.game_platforms || [];
+    extractAllTags();
+    applyFilters();
+    updateActiveFiltersDisplay();
+  }
+}
+
+async function fetchGamePlatforms() {
+  const data = await fetchGamePlatformsFromApi();
+  if (data) {
+    state.allGamePlatforms = data.game_platforms || [];
+  }
+}
+
+async function fetchPlatforms() {
+  const data = await fetchPlatformsFromApi();
+  if (data) {
+    state.allPlatforms = data.platforms || [];
+    renderPlatforms(state.allPlatforms);
+    updateTabCounts();
+  }
+}
+
 export function wireDomEvents() {
   const displayGrid = document.getElementById('display-grid');
   const btnAddGame = document.getElementById('btn-add-game');
@@ -28,6 +56,7 @@ export function wireDomEvents() {
   const modalImport = document.getElementById('modal-import');
   const modalAddToPlatform = document.getElementById('modal-add-to-platform');
   const modalFilter = document.getElementById('modal-filter');
+  const modalOrphanHandler = document.getElementById('modal-orphan-handler');
   const formGame = document.getElementById('form-game');
   const formPlatform = document.getElementById('form-platform');
   const formAddToPlatform = document.getElementById('form-add-to-platform');
@@ -49,7 +78,7 @@ export function wireDomEvents() {
   });
 
   // Close when clicking outside
-  const modalList = [modalGame, modalPlatform, modalImport, modalAddToPlatform, modalFilter];
+  const modalList = [modalGame, modalPlatform, modalImport, modalAddToPlatform, modalFilter, modalOrphanHandler];
   const modalDisplay = document.getElementById('modal-display');
   if (modalDisplay) modalList.push(modalDisplay);
   modalList.forEach(modal => {
@@ -59,12 +88,27 @@ export function wireDomEvents() {
   });
 
   // Add Game
-  btnAddGame.addEventListener('click', () => {
+  btnAddGame.addEventListener('click', async () => {
     formGame.reset();
+    // Populate name from search input if available
+    const searchInput = document.getElementById('search-input');
+    if (searchInput && searchInput.value) {
+      formGame.querySelector('input[name="name"]').value = searchInput.value;
+    }
+
+    populateGamePlatformsList(null); // Clear the list for a new game
     document.getElementById('modal-game-title').textContent = 'Add Game';
     formGame.dataset.gameId = '';
+    // Hide clone/delete button group for "Add" mode
+    formGame.querySelector('.btn-clone').parentElement.style.display = 'none';
+    document.getElementById('game-platforms-section').style.display = 'block';
+
     document.getElementById('link-game-section').style.display = 'none';
     openModal(modalGame);
+    // Set focus on the game name input field
+    formGame.querySelector('input[name="name"]').focus();
+    // Set button text for "Add" mode
+    formGame.querySelector('button[type="submit"]').textContent = 'Save & Add Platform';
   });
 
   // Game type radios
@@ -90,6 +134,10 @@ export function wireDomEvents() {
     formPlatform.reset();
     document.getElementById('modal-platform-title').textContent = 'Add Platform';
     formPlatform.dataset.platformId = '';
+    // Hide clone/delete buttons for "Add" mode
+    formPlatform.querySelector('.btn-clone').style.display = 'none';
+    formPlatform.querySelector('.btn-delete').style.display = 'none';
+
     openModal(modalPlatform);
   });
 
@@ -100,8 +148,198 @@ export function wireDomEvents() {
 
   // Refresh data when import completes
   window.addEventListener('vgd:import_complete', async () => {
-    await populatePlatformFilters();
+    await fetchPlatforms(); // This will now re-render the platform list
     if (state.currentTab === 'games') fetchGames(); else fetchPlatforms();
+  });
+
+  // --- Modal Form Actions (Clone/Delete) ---
+
+  // Game Form Actions
+  modalGame.addEventListener('click', async (e) => {
+    const gameId = formGame.dataset.gameId;
+    if (!gameId) return;
+
+    // Clone Game
+    if (e.target.classList.contains('btn-clone')) {
+      formGame.dataset.gameId = ''; // Unset the ID to trigger a create (POST) on save
+      document.getElementById('modal-game-title').textContent = 'Add Game (Cloned)';
+      formGame.querySelector('input[name="name"]').value += ' (Copy)';
+      // Hide clone/delete buttons after cloning
+      formGame.querySelector('.btn-clone').style.display = 'none';
+      formGame.querySelector('.btn-delete').style.display = 'none';
+      alert('Game data cloned. Modify and save to create a new entry.');
+    }
+
+    // Delete Game
+    if (e.target.classList.contains('btn-delete')) {
+      if (confirm('Are you sure you want to delete this game? This cannot be undone.')) {
+        try {
+          const res = await fetch(`/plugins/database_handler/games/${gameId}`, { method: 'DELETE' });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Server responded with an error.');
+
+          closeModal(modalGame);
+          await fetchGames(); // Refresh game list
+
+          // Check if any platforms became empty and offer to delete them
+          if (data.empty_platforms && data.empty_platforms.length > 0) {
+            const platformNames = data.empty_platforms
+              .map(pid => state.allPlatforms.find(p => p.id === pid)?.name)
+              .filter(Boolean);
+
+            if (platformNames.length > 0 && confirm(`The following platforms are now empty: ${platformNames.join(', ')}.\n\nWould you like to delete them?`)) {
+              for (const pid of data.empty_platforms) {
+                await fetch(`/plugins/database_handler/platforms/${pid}`, { method: 'DELETE' });
+              }
+              await fetchPlatforms(); // Refresh platform list if we deleted some
+            }
+          }
+        } catch (err) {
+          alert('Error deleting game: ' + (err.message || 'Unknown error'));
+        }
+      }
+    }
+  });
+
+  // Platform Form Actions
+  modalPlatform.addEventListener('click', async (e) => {
+    const platformId = formPlatform.dataset.platformId;
+    if (!platformId) return;
+
+    // Clone Platform
+    if (e.target.classList.contains('btn-clone')) {
+      formPlatform.dataset.platformId = ''; // Unset ID for creation
+      document.getElementById('modal-platform-title').textContent = 'Add Platform (Cloned)';
+      formPlatform.querySelector('input[name="name"]').value += ' (Copy)';
+      formPlatform.querySelector('.btn-clone').style.display = 'none';
+      formPlatform.querySelector('.btn-delete').style.display = 'none';
+      alert('Platform data cloned. Modify and save to create a new entry.');
+    }
+
+    // Delete Platform
+    if (e.target.classList.contains('btn-delete')) {
+      const initialConfirm = confirm('Are you sure you want to delete this platform? All associated game links will also be removed.');
+      if (initialConfirm) {
+        try {
+          const res = await fetch(`/plugins/database_handler/platforms/${platformId}`, { method: 'DELETE' });
+
+          if (res.status === 409) { // Conflict - orphaning games
+            const data = await res.json();
+            // Show the orphan handler modal instead of confirm()
+            const orphanForm = document.getElementById('form-orphan-handler');
+            orphanForm.dataset.platformId = platformId;
+            orphanForm.dataset.orphanedGames = JSON.stringify(data.orphaned_games || []);
+
+            const orphanCount = (data.orphaned_games || []).length;
+            document.getElementById('orphan-info-text').textContent = `Deleting this platform will orphan ${orphanCount} game(s). What would you like to do?`;
+
+            // Populate remap dropdown
+            const remapSelect = document.getElementById('orphan-remap-select');
+            remapSelect.innerHTML = '';
+            state.allPlatforms.filter(p => p.id !== platformId).forEach(p => {
+              const opt = new Option(p.name, p.id);
+              remapSelect.appendChild(opt);
+            });
+
+            document.getElementById('orphan-new-name').value = `Orphaned_Games_${Math.random().toString(36).substring(2, 8)}`;
+            openModal(modalOrphanHandler);
+            return; // Stop further processing, wait for modal interaction
+          } else if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'Server responded with an error.');
+          }
+
+          closeModal(modalPlatform);
+          await fetchPlatforms(); // Refresh platform list and game list (as links are removed)
+          await fetchGames();
+        } catch (err) {
+          alert('Error deleting platform: ' + (err.message || 'Unknown error'));
+        }
+      }
+    }
+  });
+
+  // Orphan Handler Modal Logic
+  const orphanForm = document.getElementById('form-orphan-handler');
+  const orphanRadios = orphanForm.querySelectorAll('input[name="orphan_action"]');
+  orphanRadios.forEach(radio => {
+    radio.addEventListener('change', () => {
+      document.getElementById('orphan-remap-select').disabled = orphanForm.orphan_action.value !== 'remap';
+      document.getElementById('orphan-new-name').disabled = orphanForm.orphan_action.value !== 'new';
+    });
+  });
+
+  orphanForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const action = orphanForm.orphan_action.value;
+    const platformIdToDelete = orphanForm.dataset.platformId;
+    const orphanedGames = JSON.parse(orphanForm.dataset.orphanedGames);
+
+    try {
+      if (action === 'delete') {
+        // Action 1: Force delete and orphan games
+        const forceRes = await fetch(`/plugins/database_handler/platforms/${platformIdToDelete}?force=true`, { method: 'DELETE' });
+        if (!forceRes.ok) throw new Error('Failed to force delete platform.');
+
+      } else if (action === 'remap' || action === 'new') {
+        let targetPlatformId;
+        if (action === 'new') {
+          // Action 2a: Create a new platform first
+          const newPlatformName = document.getElementById('orphan-new-name').value;
+          const createRes = await fetch('/plugins/database_handler/platforms', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: newPlatformName, supports_digital: true, supports_physical: true })
+          });
+          if (!createRes.ok) throw new Error('Failed to create temporary platform.');
+          const newPlatformData = await createRes.json();
+          targetPlatformId = newPlatformData.platform.id;
+        } else {
+          // Action 2b: Use existing platform
+          targetPlatformId = document.getElementById('orphan-remap-select').value;
+        }
+
+        if (!targetPlatformId) throw new Error('No target platform selected for remapping.');
+
+        // Remap each orphaned game to the target platform
+        const remapPromises = orphanedGames.map(game => {
+          return fetch('/plugins/database_handler/game_platforms', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              game_id: game.id,
+              platform_id: targetPlatformId,
+              is_digital: true, // Default to digital, as we don't know the original format
+              acquisition_method: 'migrated'
+            })
+          });
+        });
+
+        const remapResults = await Promise.all(remapPromises);
+        const failedRemaps = remapResults.filter(res => !res.ok);
+        if (failedRemaps.length > 0) {
+          // Not a critical failure, but worth noting. The original platform will still be deleted.
+          console.warn(`Failed to remap ${failedRemaps.length} games.`);
+        }
+
+        // Finally, delete the original platform (it will no longer cause orphans)
+        const finalDeleteRes = await fetch(`/plugins/database_handler/platforms/${platformIdToDelete}`, { method: 'DELETE' });
+        if (!finalDeleteRes.ok) throw new Error('Failed to delete original platform after remapping.');
+      }
+
+      // Success: close modals and refresh data
+      closeModal(modalOrphanHandler);
+      closeModal(document.getElementById('modal-platform'));
+      await fetchPlatforms();
+      await fetchGames();
+
+    } catch (err) {
+      alert('An error occurred: ' + err.message);
+    } finally {
+      // Clean up form data
+      orphanForm.dataset.platformId = '';
+      orphanForm.dataset.orphanedGames = '[]';
+    }
   });
 
   // Submit: Game
@@ -140,14 +378,20 @@ export function wireDomEvents() {
         return;
       }
       const result = await res.json();
-      if (!gameId) {
-        state.currentGameId = result.game.id;
-        closeModal(modalGame);
+      // After saving, refresh data and close modal.
+      // The new workflow handles platform association within the modal.
+      if (!gameId && result.game) { // This was a new game, transition to edit and prompt for platform
+        const newGameId = result.game.id;
+        await fetchGames(); // Refresh state to include the new game, which populates state.allGames
+        // Transition the "Add" modal to an "Edit" modal for the new game
+        await showEditGameModal(newGameId, false); // false = don't open, just populate
+        // Now, open the "Add to Platform" modal on top
+        state.currentGameId = newGameId;
         await populateAddToPlatformForm();
         openModal(modalAddToPlatform);
       } else {
         closeModal(modalGame);
-        await populatePlatformFilters();
+        await fetchPlatforms();
         if (state.currentTab === 'games') fetchGames();
       }
     } catch (err) {
@@ -155,7 +399,6 @@ export function wireDomEvents() {
       alert('Network error: ' + err.message);
     }
   });
-
   // Submit: Platform
   formPlatform.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -192,7 +435,7 @@ export function wireDomEvents() {
         return;
       }
       closeModal(modalPlatform);
-      await populatePlatformFilters();
+      await fetchPlatforms();
       if (state.currentTab === 'platforms') fetchPlatforms();
     } catch (err) {
       console.error('Form submission error:', err);
@@ -208,22 +451,21 @@ export function wireDomEvents() {
     const platformId = formData.get('platform_id');
     const acquisitionMethod = formData.get('acquisition_method') || null;
 
-    const allFormatCheckboxes = document.querySelectorAll('#format-checkbox-group input[type="checkbox"]');
+    // Correctly read the selected format pills ('digital' or 'physical')
+    const checkedFormatInputs = document.querySelectorAll('#format-checkbox-group input[type="checkbox"]:checked');
     const selectedFormats = [];
-    allFormatCheckboxes.forEach(cb => {
-      if (cb.checked) selectedFormats.push(cb.value === 'true');
-    });
+    checkedFormatInputs.forEach(input => selectedFormats.push(input.value));
+
     if (selectedFormats.length === 0) {
       alert('Please select at least one format (Digital or Physical)');
       return;
     }
-    const uniqueFormats = [...new Set(selectedFormats)];
 
-    const requests = uniqueFormats.map(isDigital => {
+    const requests = selectedFormats.map(format => {
       const gamePlatformData = {
         game_id: state.currentGameId,
         platform_id: platformId,
-        is_digital: isDigital,
+        is_digital: format === 'digital',
         acquisition_method: acquisitionMethod
       };
       return fetch('/plugins/database_handler/game_platforms', {
@@ -247,7 +489,13 @@ export function wireDomEvents() {
         return;
       }
       closeModal(modalAddToPlatform);
-      await populatePlatformFilters();
+
+      // Refresh the platform list in the underlying game modal
+      const gameId = formGame.dataset.gameId;
+      if (gameId) {
+        await populateGamePlatformsList(gameId);
+      }
+      await fetchPlatforms(); // This will now re-render the platform list
       if (state.currentTab === 'games') fetchGames();
     } catch (err) {
       console.error('Form submission error:', err);
@@ -392,12 +640,32 @@ export function wireDomEvents() {
     const tagSpan = e.target.closest('.tag');
 
     if (editGame) {
-      const gameId = editGame.getAttribute('data-id');
-      console.log('Edit game clicked:', gameId);
+      showEditGameModal(editGame.getAttribute('data-id'));
     }
     if (editPlatform) {
       const platformId = editPlatform.getAttribute('data-id');
       console.log('Edit platform clicked:', platformId);
+      const platform = state.allPlatforms.find(p => p.id === platformId);
+      if (!platform) {
+        alert('Platform not found!');
+        return;
+      }
+      formPlatform.reset();
+      formPlatform.dataset.platformId = platformId;
+      document.getElementById('modal-platform-title').textContent = 'Edit Platform';
+      formPlatform.querySelector('input[name="name"]').value = platform.name || '';
+      formPlatform.querySelector('textarea[name="description"]').value = platform.description || '';
+      formPlatform.querySelector('input[name="icon_url"]').value = platform.icon_url || '';
+      formPlatform.querySelector('input[name="image_url"]').value = platform.image_url || '';
+      formPlatform.querySelector('input[name="year_acquired"]').value = platform.year_acquired || '';
+      formPlatform.querySelector('input[name="supports_digital"]').checked = !!platform.supports_digital;
+      formPlatform.querySelector('input[name="supports_physical"]').checked = !!platform.supports_physical;
+
+      // Show clone/delete buttons for "Edit" mode
+      formPlatform.querySelector('.btn-clone').style.display = 'inline-block';
+      formPlatform.querySelector('.btn-delete').style.display = 'inline-block';
+
+      openModal(modalPlatform);
     }
     if (addToPlat) {
       const gameId = addToPlat.getAttribute('data-id');
@@ -438,34 +706,37 @@ export function wireDomEvents() {
       updateActiveFiltersDisplay();
     });
   }
-}
 
-// Data loaders used by tab switch and initial load
-export async function fetchGames() {
-  const data = await apiGet('/plugins/database_handler/games');
-  if (data) {
-    state.allGames = data.games || [];
-    await fetchGamePlatforms();
-    extractAllTags();
-    applyFilters();
-    updateActiveFiltersDisplay();
-  }
-}
+  // --- In-Modal Platform Management ---
 
-export async function fetchGamePlatforms() {
-  const data = await apiGet('/plugins/database_handler/game_platforms');
-  if (data) state.allGamePlatforms = data.game_platforms || [];
-}
+  document.getElementById('btn-associate-platform').addEventListener('click', async () => {
+    const gameId = formGame.dataset.gameId;
+    if (!gameId) {
+      alert('Please save the game before associating platforms.');
+      return;
+    }
+    state.currentGameId = gameId;
+    await populateAddToPlatformForm();
+    openModal(modalAddToPlatform);
+  });
 
-export async function fetchPlatforms() {
-  const data = await apiGet('/plugins/database_handler/platforms');
-  if (data) {
-    state.allPlatforms = data.platforms || [];
-    renderPlatforms(state.allPlatforms);
-  }
-}
-
-export async function populatePlatformFilters() {
-  const data = await apiGet('/plugins/database_handler/platforms');
-  if (data) state.allPlatforms = data.platforms || [];
+  // Handle removing a platform link from the game modal's list
+  document.getElementById('game-platforms-list').addEventListener('click', async (e) => {
+    if (e.target.classList.contains('remove-item')) {
+      const gpId = e.target.dataset.id;
+      const gameId = formGame.dataset.gameId;
+      if (confirm('Are you sure you want to remove this game from this platform?')) {
+        try {
+          const res = await fetch(`/plugins/database_handler/game_platforms/${gpId}`, { method: 'DELETE' });
+          if (!res.ok) throw new Error('Failed to remove platform link.');
+          // Refresh the list in the modal
+          await populateGamePlatformsList(gameId);
+          // Also refresh the main game list in the background
+          fetchGames();
+        } catch (err) {
+          alert('Error: ' + err.message);
+        }
+      }
+    }
+  });
 }

@@ -243,14 +243,45 @@ def _update_game(conn: sqlite3.Connection, gid: int, data: Dict[str, Any]):
     return {'game': _game_row_to_dict(cur.fetchone())}
 
 
-def _delete_game(conn: sqlite3.Connection, gid: int):
+def _delete_game(conn: sqlite3.Connection, gid: int) -> Dict[str, Any]:
     cur = conn.cursor()
     cur.execute('SELECT 1 FROM games WHERE id = ?', (gid,))
     if not cur.fetchone():
         return (404, {'error': 'not found'})
+
+    # Find platforms this game is on to check for newly-empty platforms later
+    cur.execute('SELECT DISTINCT platform_id FROM game_platforms WHERE game_id = ?', (gid,))
+    platform_ids_to_check = [row['platform_id'] for row in cur.fetchall()]
+
+    # Delete the game (cascades to game_platforms)
     cur.execute('DELETE FROM games WHERE id = ?', (gid,))
+
+    # Check which of the affected platforms are now empty
+    empty_platforms = []
+    if platform_ids_to_check:
+        for pid in platform_ids_to_check:
+            cur.execute('SELECT 1 FROM game_platforms WHERE platform_id = ? LIMIT 1', (pid,))
+            if not cur.fetchone():
+                empty_platforms.append(pid)
+
     conn.commit()
-    return (200, {'status': 'deleted'})
+    return (200, {'status': 'deleted', 'empty_platforms': empty_platforms})
+
+
+def _get_orphaned_games_on_platform_deletion(conn: sqlite3.Connection, pid: str) -> List[Dict[str, Any]]:
+    """Find games that would have no platforms left if the specified platform is deleted."""
+    cur = conn.cursor()
+    # Find all games on the platform to be deleted
+    cur.execute('SELECT DISTINCT game_id FROM game_platforms WHERE platform_id = ?', (pid,))
+    game_ids = [row['game_id'] for row in cur.fetchall()]
+
+    orphans = []
+    for gid in game_ids:
+        cur.execute('SELECT COUNT(*) FROM game_platforms WHERE game_id = ? AND platform_id != ?', (gid, pid))
+        if cur.fetchone()[0] == 0:
+            cur.execute('SELECT id, name FROM games WHERE id = ?', (gid,))
+            orphans.append(dict(cur.fetchone()))
+    return orphans
 
 
 def _list_platforms(conn: sqlite3.Connection):
@@ -320,13 +351,22 @@ def _update_platform(conn: sqlite3.Connection, pid: str, data: Dict[str, Any]):
     return {'platform': _platform_row_to_dict(cur.fetchone())}
 
 
-def _delete_platform(conn: sqlite3.Connection, pid: str):
+def _delete_platform(conn: sqlite3.Connection, pid: str, qparams: Dict[str, List[str]]):
     cur = conn.cursor()
     cur.execute('SELECT 1 FROM platforms WHERE id = ?', (pid,))
     if not cur.fetchone():
         return (404, {'error': 'not found'})
+
+    force = 'force' in qparams and qparams['force'] and qparams['force'][0].lower() == 'true'
+
+    if not force:
+        orphaned_games = _get_orphaned_games_on_platform_deletion(conn, pid)
+        if orphaned_games:
+            return (409, {'error': 'This would orphan games.', 'orphaned_games': orphaned_games})
+
     cur.execute('DELETE FROM platforms WHERE id = ?', (pid,))
     conn.commit()
+
     return (200, {'status': 'deleted'})
 
 
@@ -474,7 +514,7 @@ def handle(req: Dict[str, Any]):
                 return _update_game(conn, gid, body)
             if method == 'DELETE' and len(parts) >= 2:
                 try:
-                    gid = int(parts[1])
+                    gid = int(parts[1]) # No query params needed for game deletion
                 except Exception:
                     return (400, {'error': 'invalid id'})
                 return _delete_game(conn, gid)
@@ -500,7 +540,7 @@ def handle(req: Dict[str, Any]):
                 return _update_platform(conn, pid, body)
             if method == 'DELETE' and len(parts) >= 2:
                 pid = parts[1]
-                return _delete_platform(conn, pid)
+                return _delete_platform(conn, pid, parsed.get('query', {}))
             
             return (405, {'error': 'method not allowed'})
 

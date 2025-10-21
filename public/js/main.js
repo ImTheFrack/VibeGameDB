@@ -17,9 +17,10 @@
  * - filters.js: Implements filtering logic and triggers rendering
  */
 import { state } from './state.js';
-import { apiGet, fetchConfig, checkSeed, seedDb } from './api.js';
-import { wireDomEvents, fetchGames } from './events.js';
-import { applyFilters } from './filters.js';
+import { fetchConfig, checkSeed, seedDb, fetchPlatforms, fetchGames as fetchGamesFromApi } from './api.js';
+import { wireDomEvents } from './events.js';
+import { applyFilters, updateTabCounts, extractAllTags } from './filters.js';
+
 
 /**
  * Main bootstrap: runs after DOM content is parsed so elements are queryable.
@@ -60,7 +61,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // 4) Preload platforms (used throughout the UI)
-  const platformData = await apiGet('/plugins/database_handler/platforms');
+  const platformData = await fetchPlatforms();
   if (platformData) {
     state.allPlatforms = platformData.platforms || [];
   }
@@ -80,6 +81,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (gamesControls) gamesControls.style.display = 'flex';
 
   // 6) Fetch games and trigger initial render via filter pipeline
-  await fetchGames();
+  const gameData = await fetchGamesFromApi();
+  if (gameData) {
+    state.allGames = gameData.games || [];
+    state.allGamePlatforms = gameData.game_platforms || [];
+    extractAllTags(); // This was missing!
+  }
   applyFilters();
+  updateTabCounts(state.allGames.length);
 });

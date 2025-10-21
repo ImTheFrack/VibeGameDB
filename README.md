@@ -110,13 +110,33 @@ Links games to platforms and tracks how you obtained each copy and in what forma
   - Active filter display in controls bar
 - ✅ **Smart Tab Integration**: Filter button only appears on Games tab; hidden on Platforms tab.
 - ✅ **Interactive Pills**: Clickable pills on game cards allow quick filter application/removal.
-
-### Planned (In Priority Order)
+- **CSV Import** — Intelligent CSV import with validation:
+   - Auto-detect and map CSV columns to database fields (games and/or platforms)
+   - Preview mapped data before import
+   - Handle missing or malformed data gracefully
+     - After the import, modals.js displays an alert() with a summary of created_games, created_links, and any errors reported by the backend.
+     - It also alerts the user if no CSV text is provided or if a network error occurs.
+     - Upon successful (or partially successful) import, the modal is closed, and a vgd:import_complete event is dispatched, triggering a refresh of the game/platform lists.
+   - Pre-fetching Game Data: Before processing CSV, all existing game names are loaded into a dictionary (existing_games_by_name). 
+   - Batching New Games:New games are collected into a games_to_insert list. A single cursor.executemany() call then inserts all of them at once. This is the most significant optimization and dramatically reduces database overhead.
+   - Batching New PlatformsStaging Links: The platform links for the new games are staged in a links_to_insert list. After the games are batch-inserted, we retrieve their newly created IDs and then create the links. While the link creation itself remains iterative in this implementation (due to platform validation logic), the heaviest part—the game insertion—is now batched.
+   - Support multiple CSV formats (user-exported, IGDB exports, etc.)
+   - Merge or skip duplicate games based on user choice
+- **Edit Operations** — Modify single entries:
+   - Click to edit any game or platform
+     - Edit any data in the game or platform
+     - Pull from IGDB/match AI (dummy for now)
+     - Delete entry
+     - Clone entry
+     - Assign Game to Platform
+   - Validation to prevent orphan games (every game should have a platform)
+   - Cascade warnings when deleting platforms with games
 
 1. **Browse & Filter** — View games and platforms in a Netflix-style scrollable interface with:
    - Sortable columns (name, date added, platform count, etc.) - dropdown right now is a dummy
    - Pagination and lazy loading
    - ✅ IMPLEMENTED: Filter by platform, tag, keyword
+   - ✅ IMPLEMENTED: Modern Filter UI
    - TODO: Filter by acquisition method, remake/remaster status
 
 2. **Search & Autocomplete** — Fast search across games and platforms:
@@ -125,11 +145,11 @@ Links games to platforms and tracks how you obtained each copy and in what forma
    - Fuzzy matching for typos or partial matches
    - Dropdown suggestions with game/platform previews
 
-3. **Edit & Bulk Operations** — Modify single or multiple entries:
-   - Click to edit any game or platform
+3. **Bulk Operations**
    - Bulk select and mass-edit (e.g., change acquisition method for multiple games)
-   - Validation to prevent orphan games (every game must have a platform)
-   - Cascade warnings when deleting platforms with games
+     - any field can be mass edited but obivously some will make more sense than others
+     - mass delete
+     - mass assign platform
 
 4. **Smart Add Game** — Intelligent game addition workflow:
    - Quick "+" button to add a new game
@@ -156,26 +176,19 @@ Links games to platforms and tracks how you obtained each copy and in what forma
    - Edit platform details (name, type, icon, description, year acquired)
    - Future: Direct API sync from stores (Steam, Epic, GOG, etc.)
 
-8. **CSV Import** — Intelligent CSV import with validation:
-   - Auto-detect and map CSV columns to database fields
-   - Preview mapped data before import
-   - Handle missing or malformed data gracefully
-   - Support multiple CSV formats (user-exported, IGDB exports, etc.)
-   - Merge or skip duplicate games based on user choice
-
-9. **CSV Export** — Export your library for backup or external use:
+8. **CSV Export** — Export your library for backup or external use:
    - Export all games and platforms to CSV
    - Include all metadata (tags, acquisition method, platforms, etc.)
    - Format is compatible with CSV import (round-trip safe)
    - Support filtered exports (e.g., only games on a specific platform)
 
-10. **Screenshots & Media** — Store and display game media:
+9. **Screenshots & Media** — Store and display game media:
     - Upload and store multiple fullscreen screenshots per game
     - Display in lightbox or carousel on game detail view
     - Lazy-load images to keep UI responsive
     - Optional: Fetch screenshots from IGDB or other sources
 
-11. **Tags & Organization** — Flexible tagging system:
+10. **Tags & Organization** — Flexible tagging system:
     - Add custom tags to games (e.g., "co-op", "story-driven", "completed", "wishlist")
     - Filter and search by tags
     - Suggest tags based on IGDB genres or AI analysis
