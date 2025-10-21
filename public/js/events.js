@@ -5,6 +5,17 @@ import { renderPlatforms } from './render.js';
 import { applyFilters, extractAllTags, updateActiveFiltersDisplay } from './filters.js';
 import { openModal, closeModal, populateFilterModal, populateAddToPlatformForm } from './modals.js';
 
+/**
+ * Event wiring and data loaders.
+ *
+ * This module centralizes:
+ * - Attaching DOM event handlers for buttons, forms, tabs, and dynamic grid
+ * - Small data loader helpers used by tab switches and initial load
+ *
+ * Keeping this isolated ensures rendering and filtering modules remain pure
+ * and testable (no direct DOM event concerns there).
+ */
+
 export function wireDomEvents() {
   const displayGrid = document.getElementById('display-grid');
   const btnAddGame = document.getElementById('btn-add-game');

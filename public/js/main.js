@@ -1,15 +1,41 @@
 'use strict';
+/**
+ * Application entry module for the SPA.
+ *
+ * Responsibilities
+ * - Bootstraps the UI once the DOM is ready
+ * - Ensures the database is seeded (optional helper via seed handler)
+ * - Loads runtime config to determine default filter semantics
+ * - Preloads platforms (used by multiple views and modals)
+ * - Selects the Games tab on first load and shows its controls
+ * - Kicks off data loading and initial render via filter pipeline
+ *
+ * Key modules
+ * - state.js: Centralized app state (games, platforms, filters, options)
+ * - api.js: Thin wrappers around fetch() for backend plugin endpoints
+ * - events.js: Wires DOM event handlers and exposes data loaders
+ * - filters.js: Implements filtering logic and triggers rendering
+ */
 import { state } from './state.js';
 import { apiGet, fetchConfig, checkSeed, seedDb } from './api.js';
-import { wireDomEvents, fetchGames, fetchPlatforms, fetchGamePlatforms, populatePlatformFilters } from './events.js';
+import { wireDomEvents, fetchGames } from './events.js';
 import { applyFilters } from './filters.js';
 
-// Entry point for the SPA as an ES module
-
+/**
+ * Main bootstrap: runs after DOM content is parsed so elements are queryable.
+ * Steps:
+ * 1) Wire all DOM event listeners (buttons, forms, modals, tabs)
+ * 2) Optionally seed the database if it is empty (development convenience)
+ * 3) Load server config (e.g., default platform filter AND/OR)
+ * 4) Preload platforms used across UI (filter modal, add-to-platform modal)
+ * 5) Ensure the Games tab is active and controls are visible
+ * 6) Fetch games, then apply current filters to render the grid
+ */
 document.addEventListener('DOMContentLoaded', async () => {
+  // 1) Wire events first so UI is interactive during data loading
   wireDomEvents();
 
-  // Seed database if empty
+  // 2) Development convenience: seed database when empty
   try {
     const checkRes = await checkSeed();
     if (checkRes && checkRes.empty) {
@@ -23,7 +49,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.error('Error checking/seeding database:', err);
   }
 
-  // Fetch config to learn default platform filter mode
+  // 3) Load config for platform filter semantics
   try {
     const cfg = await fetchConfig();
     if (cfg && typeof cfg.platform_filter_and !== 'undefined') {
@@ -33,13 +59,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.error('Failed to fetch config:', err);
   }
 
-  // Load platforms first (used throughout UI)
+  // 4) Preload platforms (used throughout the UI)
   const platformData = await apiGet('/plugins/database_handler/platforms');
   if (platformData) {
     state.allPlatforms = platformData.platforms || [];
   }
 
-  // Ensure Games tab is selected visually
+  // 5) Ensure Games tab is the active view and controls visible
   const tabs = Array.from(document.querySelectorAll('.tab'));
   state.currentTab = 'games';
   tabs.forEach(tab => {
@@ -53,7 +79,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const gamesControls = document.getElementById('games-controls');
   if (gamesControls) gamesControls.style.display = 'flex';
 
-  // Load games and render
+  // 6) Fetch games and trigger initial render via filter pipeline
   await fetchGames();
   applyFilters();
 });

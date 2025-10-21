@@ -2,6 +2,13 @@
 import { state } from './state.js';
 import { escapeHtml } from './utils.js';
 
+/**
+ * Rendering functions responsible for translating state into DOM.
+ *
+ * No network or business logic here; these functions read `state` and
+ * the provided arrays, and update the `#display-grid` accordingly.
+ */
+
 // Render an array of games into the display grid
 export function renderGames(games) {
   const grid = document.getElementById('display-grid');

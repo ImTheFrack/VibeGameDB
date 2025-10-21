@@ -2,6 +2,14 @@
 import { state } from './state.js';
 import { apiGet, fetchPlatformsFromServer } from './api.js';
 
+/**
+ * Modal helpers and population routines.
+ *
+ * This module provides simple utilities to open/close modals and to
+ * populate specific modal UIs that require state or API data (filter
+ * modal and add-to-platform modal).
+ */
+
 export function openModal(modal) {
   modal.setAttribute('aria-hidden', 'false');
   modal.style.display = 'flex';

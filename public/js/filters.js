@@ -2,6 +2,14 @@
 import { state } from './state.js';
 import { renderGames } from './render.js';
 
+/**
+ * Filter subsystem.
+ *
+ * - extractAllTags: builds a unique, sorted tag list from all games
+ * - applyFilters: applies keyword/platform/tag filters to games and renders
+ * - updateActiveFiltersDisplay: shows an aggregate count of active filters
+ */
+
 export function extractAllTags() {
   const tagSet = new Set();
   state.allGames.forEach(game => {

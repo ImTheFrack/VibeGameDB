@@ -1,4 +1,7 @@
 'use strict';
+/**
+ * Small utility helpers shared across modules.
+ */
 
 export function escapeHtml(s){
   if (!s) return '';
