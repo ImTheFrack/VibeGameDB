@@ -164,9 +164,11 @@ body {
 .autocomplete-item[data-type="game"] .item-type-icon::before { content: '🎮'; }
 .autocomplete-item[data-type="platform"] .item-type-icon::before { content: '💻'; }
 .autocomplete-item[data-type="tag"] .item-type-icon::before { content: '#'; }
+.autocomplete-group-header { padding: 8px 14px 4px; font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; background: rgba(0,0,0,0.1); }
 .autocomplete-footer { padding: 6px 14px; font-size: 11px; color: var(--muted); background: rgba(0,0,0,0.2); text-align: right; }
 .fuzzy-match-indicator { font-weight: 400; color: var(--accent); margin-left: 4px; cursor: help; }
 .autocomplete-item.selected .fuzzy-match-indicator { color: var(--bg); }
+.fuzzy-fallback-indicator { font-weight: 400; color: #e67e22; margin-left: 4px; cursor: help; }
 
 /* Autocomplete inside a modal */
 .modal-autocomplete {

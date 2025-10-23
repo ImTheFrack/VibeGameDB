@@ -466,13 +466,19 @@ export function renderAutocomplete(suggestions, container = null, footerText = n
     return;
   }
 
-  resultsContainer.innerHTML = suggestions.map(item => {
+  const exactMatches = suggestions.filter(s => s.match_type === 'exact');
+  const fuzzyMatches = suggestions.filter(s => s.match_type === 'fuzzy');
+
+  let html = '';
+
+  const renderItems = (items) => {
+    return items.map(item => {
     let context = item.context || '';
     if (context.length > 80) context = context.substring(0, 80) + '...';
     const fuzzyIndicator = item.match_type === 'fuzzy' ? '<span class="fuzzy-match-indicator" title="Fuzzy match">~</span>' : '';
 
     return `
-      <div class="autocomplete-item" data-type="${item.type}" data-id="${item.id}" data-name="${item.name}">
+      <div class="autocomplete-item" data-type="${item.type}" data-id="${item.id}" data-name="${item.name}" data-match-type="${item.match_type || 'exact'}">
         <div class="item-type-icon"></div>
         <div class="item-text">
           <div class="item-name">${item.name} ${fuzzyIndicator}</div>
@@ -480,8 +486,21 @@ export function renderAutocomplete(suggestions, container = null, footerText = n
         </div>
       </div>
     `;
-  }).join('');
-  
+    }).join('');
+  };
+
+  if (exactMatches.length > 0) {
+    html += '<div class="autocomplete-group-header">Exact Matches</div>';
+    html += renderItems(exactMatches);
+  }
+
+  if (fuzzyMatches.length > 0) {
+    html += `<div class="autocomplete-group-header">Fuzzy Matches</div>`;
+    html += renderItems(fuzzyMatches);
+  }
+
+  resultsContainer.innerHTML = html;
+
   const defaultFooter = `↑↓ to navigate, ↩ to select, ⇥ to complete`;
   resultsContainer.innerHTML += `<div class="autocomplete-footer">${footerText || defaultFooter}</div>`;
   resultsContainer.style.display = 'block';

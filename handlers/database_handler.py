@@ -535,6 +535,78 @@ def _delete_game_platform(conn: sqlite3.Connection, gp_id: int):
     return (200, {'status': 'deleted'})
 
 
+def _autocomplete(conn: sqlite3.Connection, qparams: Dict[str, List[str]], limit: int = 10):
+    """Perform a full-text search for autocomplete suggestions."""
+    query = (qparams.get('q') or [''])[0].strip()
+    if not query:
+        return {'suggestions': []}
+
+    # --- 1. Exact and Prefix Matches ---
+    # "elden ri" -> "elden ri*" (prefix search)
+    # "elden ring" -> "elden ring*"
+    # This will find exact matches and items that start with the query.
+    exact_search_term = f'{query}*'
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT row_id, item_type, name, context, rank
+        FROM search_idx
+        WHERE search_idx MATCH ?
+        ORDER BY rank
+        LIMIT ?
+    """, (exact_search_term, limit))
+
+    suggestions = []
+    seen_ids = set()
+    for row in cur.fetchall():
+        suggestion_id = f"{row['item_type']}-{row['row_id']}"
+        if suggestion_id in seen_ids:
+            continue
+        seen_ids.add(suggestion_id)
+        suggestions.append({
+            'id': row['row_id'],
+            'type': row['item_type'],
+            'name': row['name'],
+            'context': row['context'],
+            'match_type': 'exact'
+        })
+
+    # --- 2. Fuzzy Matches (if we still need more suggestions) ---
+    if len(suggestions) < limit:
+        # Use a standard FTS5 query with OR to find documents containing any of the search terms.
+        # The bm25 ranking algorithm will automatically rank documents containing more terms higher.
+        # We combine two strategies for better results:
+        # 1. An OR query for each word: 'Elden OR Rign'
+        # 2. A prefix query on the last word: 'Elden Rign*'
+        # This handles typos in earlier words while still giving good results for in-progress typing.
+        or_terms = ' OR '.join(query.split())
+        # The prefix term should not be in single quotes for FTS5 syntax.
+        # A search for "Elden Rign" becomes a query like: (Elden OR Rign) OR "Elden Rign*"
+        fuzzy_term = f"({or_terms}) OR \"{query}*\""
+        
+        cur.execute("""
+            SELECT row_id, item_type, name, context, rank
+            FROM search_idx
+            WHERE search_idx MATCH ?
+            ORDER BY rank
+            LIMIT ?
+        """, (fuzzy_term, limit))
+
+        for row in cur.fetchall():
+            if len(suggestions) >= limit:
+                break
+            suggestion_id = f"{row['item_type']}-{row['row_id']}"
+            if suggestion_id not in seen_ids:
+                seen_ids.add(suggestion_id)
+                suggestions.append({
+                    'id': row['row_id'],
+                    'type': row['item_type'],
+                    'name': row['name'],
+                    'context': row['context'],
+                    'match_type': 'fuzzy'
+                })
+
+    return {'suggestions': suggestions}
+
 def _normalize_name(name: str) -> str:
     """
     Normalizes a name for searching, mirroring the frontend logic.
@@ -549,54 +621,6 @@ def _normalize_name(name: str) -> str:
     name = re.sub(r'[^\w\s]', ' ', name) # Replace punctuation with space
     name = re.sub(r'\s+', ' ', name).strip() # Collapse whitespace
     return name
-
-def _autocomplete(conn: sqlite3.Connection, qparams: Dict[str, List[str]]):
-    """Perform a full-text search for autocomplete suggestions."""
-    query = (qparams.get('q') or [''])[0].strip()
-    if not query:
-        return {'suggestions': []}
-
-    # Align with frontend filter logic: "exact phrase" vs. word1 AND word2
-    normalized_query = _normalize_name(query)
-    search_term = ''
-    # Check for an exact phrase query (starts with a quote)
-    if query.startswith('"'):
-        # Strip leading quote and any trailing quote to handle in-progress typing
-        phrase = query.strip('"').strip()
-        # FTS5 phrase search syntax uses double quotes. A wildcard is added for prefix matching on the phrase.
-        if phrase:
-            search_term = f'"{phrase}"*'
-    else:
-        # Default FTS5 behavior is AND for space-separated terms.
-        # We add a wildcard to the last term for prefix matching.
-        # e.g., "elden ri" becomes "elden ri*" which FTS5 treats as "elden AND ri*".
-        search_term = f'{normalized_query}*'
-
-    if not search_term.replace('*', ''):
-        return {'suggestions': []}
-
-    cur = conn.cursor()
-    
-    # Query the FTS index, ranking results.
-    # We also fetch distinct tags separately.
-    cur.execute("""
-        SELECT row_id, item_type, name, context, rank
-        FROM search_idx
-        WHERE search_idx MATCH ?
-        ORDER BY rank
-        LIMIT 10
-    """, (search_term,))
-    
-    suggestions = []
-    for row in cur.fetchall():
-        suggestions.append({
-            'id': row['row_id'],
-            'type': row['item_type'],
-            'name': row['name'],
-            'context': row['context']
-        })
-
-    return {'suggestions': suggestions}
 
 
 def handle(req: Dict[str, Any]):
@@ -618,7 +642,7 @@ def handle(req: Dict[str, Any]):
             # Possible forms: /games, /games/<id>
             parts = sp.split('/') if sp else []
             method = parsed.get('method', 'GET')
-            if method == 'GET':
+            if method == 'GET' and len(parts) <= 2:
                 return _list_games(conn, parsed.get('query', {}))
             if method == 'POST' and (len(parts) == 1 or parts == ['games']):
                 body = parsed.get('json')
@@ -698,7 +722,7 @@ def handle(req: Dict[str, Any]):
         if sp.startswith('autocomplete'):
             method = parsed.get('method', 'GET')
             if method == 'GET':
-                return _autocomplete(conn, parsed.get('query', {}))
+                return _autocomplete(conn, parsed.get('query', {}), limit=10)
             return (405, {'error': 'method not allowed'})
 
         if sp.startswith('schema'):

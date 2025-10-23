@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, unquote, quote
 import mimetypes
@@ -7,6 +8,7 @@ import html
 import importlib.util
 import importlib
 import threading
+import sqlite3
 import re
 
 #!/usr/bin/env python3
@@ -26,6 +28,10 @@ HANDLERS_DIR = os.path.join(os.path.dirname(__file__), "handlers")
 # Simple cache: name -> (module, mtime)
 _PLUGIN_CACHE = {}
 _PLUGIN_LOCK = threading.Lock()
+
+# Add project root to sys.path to allow importing from handlers
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from handlers.database_handler import _get_conn, _ensure_schema
 
 def _load_plugin(name: str):
     """Load (and cache) a plugin module from HANDLERS_DIR/name.py.
@@ -371,7 +377,38 @@ class RequestHandler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         # Cleaner console logs
         print(f"{self.address_string()} - - [{self.log_date_time_string()}] {fmt % args}")
-
+        
+def _check_sqlite_features():
+    """Checks for critical SQLite features like FTS5 and prints status."""
+    print("\n--- SQLite Feature Check ---")
+    conn = None
+    try:
+        conn = _get_conn()
+        _ensure_schema(conn) # Ensure DB and tables exist
+        
+        py_arch = "64-bit" if sys.maxsize > 2**32 else "32-bit"
+        print(f"[*] Python Arch:    {py_arch}")
+        
+        cur = conn.cursor()
+        cur.execute("SELECT sqlite_version()")
+        version = cur.fetchone()[0]
+        print(f"[*] SQLite Version: {version}")
+        
+        # Check if FTS5 was a compile-time option. This is the most reliable check.
+        cur.execute("SELECT sqlite_compileoption_used('SQLITE_ENABLE_FTS5')")
+        fts5_enabled = cur.fetchone()[0]
+        
+        if fts5_enabled:
+            print(f"[*] FTS5 Support:   Enabled")
+        else:
+            print("[!] FTS5 Support:   DISABLED. Full-text search will not work.")
+    except sqlite3.OperationalError as e:
+        print(f"[!] Database Error during feature check: {e}")
+    finally:
+        if conn:
+            conn.close()
+        print("--------------------------\n")
+        
 def run(host="0.0.0.0", port=5000):
     server = ThreadingHTTPServer((host, port), RequestHandler)
     print(f"Serving on http://{host}:{port}\nDoc root: {DOC_ROOT}")
@@ -386,4 +423,5 @@ def run(host="0.0.0.0", port=5000):
 if __name__ == "__main__":
     host = os.environ.get("HOST", "0.0.0.0")
     port = int(os.environ.get("PORT", "5000"))
+    _check_sqlite_features()
     run(host, port)
