@@ -75,12 +75,23 @@
                 </div>
 
                 <div class="right-controls" id="games-controls">
+                    <button id="btn-select-multiple" class="btn btn-sm">☑ Select</button>
                     <button id="btn-filter" class="btn btn-sm">🔍 Filter</button>
                     <button id="btn-display" class="btn btn-sm">🖼 Display</button>
                     <span id="active-filters" class="active-filters"></span>
                 </div>
             </section>
             
+            <!-- Bulk actions bar (hidden by default) -->
+            <section id="bulk-actions-bar" class="bulk-actions-bar" style="display: none;">
+                <span id="bulk-actions-count"></span>
+                <button id="bulk-select-all-filtered" class="btn btn-sm">Select All (Filtered)</button>
+                <button id="bulk-select-page" class="btn btn-sm">Select Page</button>
+                <button id="bulk-select-none" class="btn btn-sm">Select None</button>
+                <button id="bulk-select-inverse" class="btn btn-sm">Inverse Selection</button>
+                <button id="bulk-action-edit" class="btn btn-sm btn-primary">Edit Selected...</button>
+            </section>
+
             <section id="pagination-top" class="pagination-controls"></section>
 
             <!-- Display grid: cards will be rendered here via JS -->
@@ -112,6 +123,9 @@
                 <label>Cover Image URL<input type="text" name="cover_image_url" placeholder="e.g., /img/cover.svg or https://..."></label>
                 <label>Trailer URL<input type="text" name="trailer_url" placeholder="e.g., /trailers/promo.mp4 or https://..."></label>
                 <label>Tags (comma-separated)<input type="text" name="tags" placeholder="e.g., action, RPG, indie"></label>
+
+                <!-- Container for fields that are different in bulk edit mode -->
+                <div id="bulk-edit-specific-fields"></div>
 
                 <div class="inline-radios">
                     <span>Type:</span>
@@ -251,6 +265,40 @@
                 <div class="modal-actions">
                     <button id="btn-run-import" class="btn btn-primary">Run Import</button>
                     <button class="btn" data-close>Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk Edit Modal -->
+    <div id="modal-bulk-edit" class="modal" aria-hidden="true">
+        <div class="modal-content">
+            <header class="modal-header">
+                <h2>Bulk Edit <span id="bulk-edit-count"></span> Items</h2>
+                <button class="modal-close" data-close>&times;</button>
+            </header>
+            <div id="form-bulk-edit" class="modal-form">
+                <p>Choose an action to apply to all selected items. This cannot be undone.</p>
+
+                <div id="bulk-actions-container">
+                    <div class="bulk-action-button-row">
+                        <button class="btn" data-action="assign_platform">Assign to Platform</button>
+                        <select name="bulk_platform_id" id="bulk-assign-platform-select">
+                            <!-- JS will populate platforms -->
+                        </select>
+                    </div>
+                    <div class="bulk-action-button-row">
+                        <button class="btn" data-action="remove_platform">Remove from Platform</button>
+                        <select name="bulk_platform_id_remove" id="bulk-remove-platform-select">
+                            <!-- JS will populate platforms -->
+                        </select>
+                    </div>
+                    <button id="bulk-btn-edit-fields" class="btn" data-action="edit_fields">Edit Game Fields...</button>
+                    <button id="bulk-btn-delete" class="btn btn-danger" data-action="delete">Delete Selected Items</button>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn" data-close>Cancel</button>
                 </div>
             </div>
         </div>

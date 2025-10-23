@@ -1,9 +1,9 @@
 'use strict';
 import { state, clearAllFilters } from './state.js';
-import { fetchGames as fetchGamesFromApi, fetchPlatforms as fetchPlatformsFromApi, fetchAutocomplete } from './api.js';
-import { renderGames, renderPlatforms } from './render.js';
-import { applyFilters, extractAllTags, updateActiveFiltersDisplay, updateTabCounts } from './filters.js';
-import { openModal, closeModal, populateFilterModal, populateAddToPlatformForm, showEditGameModal, showEditPlatformModal, populateGamePlatformsList, renderAutocomplete, clearAutocomplete } from './modals.js';
+import { fetchGames as fetchGamesFromApi, fetchPlatforms as fetchPlatformsFromApi, fetchAutocomplete, postBulkOperation } from './api.js';
+import { renderGames, renderPlatforms, renderBulkActionsBar } from './render.js';
+import { applyFilters, extractAllTags, updateActiveFiltersDisplay, updateTabCounts } from './filters.js'; 
+import { openModal, closeModal, populateFilterModal, populateAddToPlatformForm, showEditGameModal, showBulkEditGameModal, showEditPlatformModal, populateGamePlatformsList, renderAutocomplete, clearAutocomplete } from './modals.js';
 import { initImportModal } from './modals.js';
 import { normalizeName } from './utils.js';
 
@@ -27,6 +27,7 @@ async function fetchGames() {
     extractAllTags();
     applyFilters();
     updateActiveFiltersDisplay();
+    renderBulkActionsBar();
   }
 }
 
@@ -36,6 +37,7 @@ async function fetchPlatforms() {
     state.allPlatforms = data.platforms || [];
     renderPlatforms(state.allPlatforms);
     updateTabCounts();
+    renderBulkActionsBar();
   }
 }
 
@@ -49,6 +51,7 @@ export function wireDomEvents() {
   const modalPlatform = document.getElementById('modal-platform');
   const modalImport = document.getElementById('modal-import');
   const modalAddToPlatform = document.getElementById('modal-add-to-platform');
+  const modalBulkEdit = document.getElementById('modal-bulk-edit');
   const modalFilter = document.getElementById('modal-filter');
   const modalOrphanHandler = document.getElementById('modal-orphan-handler');
   const formGame = document.getElementById('form-game');
@@ -59,6 +62,7 @@ export function wireDomEvents() {
   const gamesControls = document.getElementById('games-controls');
   const sortSelect = document.getElementById('sort-select');
   const itemsPerPageSelect = document.getElementById('items-per-page-select');
+  const btnSelectMultiple = document.getElementById('btn-select-multiple');
   const headerSearch = document.getElementById('search-input');
 
   const autocompleteResults = document.getElementById('autocomplete-results');
@@ -76,7 +80,7 @@ export function wireDomEvents() {
 
   // Close when clicking outside
   // NOTE: modalGame and modalPlatform are intentionally excluded to prevent accidental data loss.
-  const modalList = [modalImport, modalAddToPlatform, modalFilter, modalOrphanHandler];
+  const modalList = [modalImport, modalAddToPlatform, modalFilter, modalOrphanHandler, modalBulkEdit];
   const modalDisplay = document.getElementById('modal-display');
   if (modalDisplay) modalList.push(modalDisplay);
   modalList.forEach(modal => {
@@ -84,6 +88,21 @@ export function wireDomEvents() {
       if (e.target === modal) closeModal(modal, document.querySelector(`[data-opens-modal="${modal.id}"]`));
     });
   });
+
+  // Bulk selection
+  btnSelectMultiple.addEventListener('click', () => {
+    state.selection.enabled = !state.selection.enabled;
+    // When disabling selection, clear selections
+    if (!state.selection.enabled) {
+      state.selection.selectedGameIds.clear();
+      state.selection.selectedPlatformIds.clear();
+    }
+    // Re-render the current view to show/hide checkboxes
+    applyFilters();
+    renderBulkActionsBar();
+  });
+
+
 
   // Add Game
   btnAddGame.addEventListener('click', async () => {
@@ -93,6 +112,11 @@ export function wireDomEvents() {
     if (searchInput && searchInput.value) {
       formGame.querySelector('input[name="name"]').value = searchInput.value;
     }
+
+    // Explicitly make the name input visible, in case it was hidden by bulk edit mode.
+    const nameInputContainer = formGame.querySelector('input[name="name"]').parentElement.parentElement;
+    nameInputContainer.style.display = 'block';
+    formGame.querySelector('input[name="name"]').disabled = false;
 
     populateGamePlatformsList(null); // Clear the list for a new game
     document.getElementById('modal-game-title').textContent = 'Add Game';
@@ -403,8 +427,51 @@ export function wireDomEvents() {
   formGame.addEventListener('submit', async (e) => {
     e.preventDefault();
     const formData = new FormData(formGame);
+    const gameId = formGame.dataset.gameId; // This will be "" in bulk mode, or an ID string
+    const isBulkEdit = gameId === '' && state.selection.enabled;
 
-    const tagsStr = formData.get('tags') || '';
+    if (isBulkEdit) {
+      const selectedIds = Array.from(state.selection.selectedGameIds);
+      if (selectedIds.length === 0) {
+        alert('No games selected for bulk edit.');
+        return;
+      }
+
+      const payload = {
+        action: 'edit_fields',
+        item_type: 'game',
+        ids: selectedIds,
+        params: {}
+      };
+
+      // Collect data only from enabled fields
+      formGame.querySelectorAll('.bulk-edit-enabler:checked').forEach(checkbox => {
+        const fieldName = checkbox.dataset.enables;
+        const input = formGame.querySelector(`[name="${fieldName}"]`);
+        if (input) {
+          let value;
+          if (input.type === 'radio') {
+            const checkedRadio = formGame.querySelector(`input[name="${fieldName}"]:checked`);
+            value = checkedRadio ? (checkedRadio.value === 'true') : null; // Convert "true" string to boolean
+          } else if (input.type === 'checkbox') {
+            value = input.checked;
+          } else if (fieldName === 'tags') {
+            value = input.value.split(',').map(t => t.trim()).filter(Boolean);
+          } else {
+            value = input.value;
+          }
+          payload.params[fieldName] = value;
+        }
+      });
+
+      const result = await postBulkOperation(payload);
+      alert(result.message || 'Bulk edit completed.');
+      closeModal(modalGame);
+      await fetchGames(); // Refresh data
+      return;
+    }
+
+    const tagsStr = formData.get('tags') || ''; // This part is for single add/edit
     const tags = tagsStr.split(',').map(t => t.trim()).filter(t => t.length > 0);
 
     const gameType = formData.get('game_type');
@@ -420,7 +487,6 @@ export function wireDomEvents() {
       tags: tags
     };
 
-    const gameId = formGame.dataset.gameId;
     const endpoint = gameId ? `/plugins/database_handler/games/${gameId}` : '/plugins/database_handler/games';
     const method = gameId ? 'PUT' : 'POST';
 
@@ -586,6 +652,7 @@ export function wireDomEvents() {
       tabs.forEach(t => t.classList.toggle('active', t === tab));
       if (gamesControls) gamesControls.style.display = target === 'games' ? 'flex' : 'none';
       if (target === 'games') await fetchGames(); else await fetchPlatforms();
+      renderBulkActionsBar();
     });
   });
 
@@ -811,6 +878,7 @@ export function wireDomEvents() {
       state.currentFilters = { keyword, platforms, tags, platformAnd, gameTypes, acquisitionMethods };
       applyFilters();
       closeModal(modalFilter, btnFilter);
+      renderBulkActionsBar();
       updateActiveFiltersDisplay();
     });
   }
@@ -823,6 +891,7 @@ export function wireDomEvents() {
       clearAllFilters();
       applyFilters();
       updateActiveFiltersDisplay();
+      renderBulkActionsBar();
     });
   }
 
@@ -834,6 +903,21 @@ export function wireDomEvents() {
     const platSpan = e.target.closest('.plat');
     const tagSpan = e.target.closest('.tag');
     const filterByPlatform = e.target.closest('.filter-by-platform');
+    const cardCheckbox = e.target.closest('.card-checkbox');
+
+    if (cardCheckbox) {
+      const id = cardCheckbox.dataset.id;
+      const selectedSet = state.currentTab === 'games' ? state.selection.selectedGameIds : state.selection.selectedPlatformIds;
+
+      if (cardCheckbox.checked) {
+        selectedSet.add(id);
+      } else {
+        selectedSet.delete(id);
+      }
+      e.target.closest('.card').classList.toggle('selected-card', cardCheckbox.checked);
+      renderBulkActionsBar();
+      return; // Prevent other click actions on the card
+    }
 
     if (editGame) {
       showEditGameModal(editGame.getAttribute('data-id'));
@@ -855,6 +939,7 @@ export function wireDomEvents() {
       document.querySelectorAll('#filter-platforms input[type="checkbox"]').forEach(cb => cb.checked = state.currentFilters.platforms.includes(cb.value));
       applyFilters();
       updateActiveFiltersDisplay();
+      renderBulkActionsBar();
       return;
     }
     if (tagSpan) {
@@ -865,6 +950,7 @@ export function wireDomEvents() {
       document.querySelectorAll('#filter-tags input[type="checkbox"]').forEach(cb => cb.checked = state.currentFilters.tags.includes(cb.value));
       applyFilters();
       updateActiveFiltersDisplay();
+      renderBulkActionsBar();
       return;
     }
     if (filterByPlatform) {
@@ -882,6 +968,7 @@ export function wireDomEvents() {
       state.currentFilters = { keyword: '', platforms: [platformId], tags: [], gameTypes: [], acquisitionMethods: [] };
       applyFilters();
       updateActiveFiltersDisplay();
+      renderBulkActionsBar();
     }
   });
 
@@ -894,6 +981,7 @@ export function wireDomEvents() {
       state.currentFilters.platforms = [];
       applyFilters();
       updateActiveFiltersDisplay();
+      renderBulkActionsBar();
     });
   }
 
@@ -930,6 +1018,124 @@ export function wireDomEvents() {
   if (paginationTop) paginationTop.addEventListener('click', handlePaginationClick);
   if (paginationBottom) paginationBottom.addEventListener('click', handlePaginationClick);
 
+  // --- Bulk Action Bar Events ---
+  const bulkActionBar = document.getElementById('bulk-actions-bar');
+  if (bulkActionBar) {
+    bulkActionBar.addEventListener('click', async (e) => {
+      const targetId = e.target.id;
+      const selectedSet = state.currentTab === 'games' ? state.selection.selectedGameIds : state.selection.selectedPlatformIds;
+
+      if (targetId === 'bulk-select-all-filtered') {
+        state.filteredGames.forEach(game => selectedSet.add(String(game.id)));
+        applyFilters(); // Re-render to show checked status
+        renderBulkActionsBar();
+      }
+
+      if (targetId === 'bulk-select-page') {
+        const start = (state.pagination.currentPage - 1) * state.pagination.pageSize;
+        const end = start + state.pagination.pageSize;
+        const pageGames = state.filteredGames.slice(start, end);
+        pageGames.forEach(game => selectedSet.add(String(game.id)));
+        applyFilters(); // Re-render
+        renderBulkActionsBar();
+      }
+
+      if (targetId === 'bulk-select-none') {
+        selectedSet.clear();
+        applyFilters(); // Re-render
+        renderBulkActionsBar();
+      }
+
+      if (targetId === 'bulk-select-inverse') {
+        const allIds = new Set(state.filteredGames.map(g => String(g.id)));
+        const currentSelection = new Set(selectedSet); // Make a copy
+
+        allIds.forEach(id => {
+          if (currentSelection.has(id)) {
+            selectedSet.delete(id);
+          } else {
+            selectedSet.add(id);
+          }
+        });
+        applyFilters(); // Re-render
+        renderBulkActionsBar();
+      }
+
+      if (targetId === 'bulk-action-edit') {
+        if (selectedSet.size === 0) {
+          alert('Please select at least one item to edit.');
+          return;
+        }
+        // Populate and open the bulk edit modal
+        const bulkEditCount = document.getElementById('bulk-edit-count');
+        bulkEditCount.textContent = selectedSet.size;
+
+        // Populate platform dropdowns
+        const assignSelect = modalBulkEdit.querySelector('#bulk-assign-platform-select');
+        const removeSelect = modalBulkEdit.querySelector('#bulk-remove-platform-select');
+        assignSelect.innerHTML = '';
+        removeSelect.innerHTML = '';
+        state.allPlatforms.forEach(p => {
+          if (assignSelect) assignSelect.add(new Option(p.name, p.id));
+          if (removeSelect) removeSelect.add(new Option(p.name, p.id));
+        });
+
+        // Show/hide game-specific options
+        const platformOptions = modalBulkEdit.querySelectorAll('.bulk-action-button-row');
+        platformOptions.forEach(opt => {
+          opt.style.display = 'flex'; // Always show for games
+        });
+        const editFieldsButton = modalBulkEdit.querySelector('#bulk-btn-edit-fields');
+        if (editFieldsButton) editFieldsButton.style.display = 'block'; // Always show for games
+
+        openModal(modalBulkEdit);
+      }
+    });
+  }
+
+  // --- Bulk Edit Modal Action Buttons ---
+  const bulkActionsContainer = document.getElementById('bulk-actions-container');
+  if (bulkActionsContainer) {
+    bulkActionsContainer.addEventListener('click', async (e) => {
+      const button = e.target.closest('[data-action]');
+      if (!button) return;
+
+      const action = button.dataset.action;
+      const itemType = state.currentTab === 'games' ? 'game' : 'platform';
+      const ids = Array.from(itemType === 'game' ? state.selection.selectedGameIds : state.selection.selectedPlatformIds);
+
+      if (action === 'edit_fields') {
+        closeModal(modalBulkEdit);
+        await showBulkEditGameModal();
+        return;
+      }
+
+      if (action === 'delete' && !confirm(`Are you sure you want to delete ${ids.length} item(s)? This cannot be undone.`)) {
+        return;
+      }
+
+      const payload = {
+        action: action,
+        item_type: itemType,
+        ids: ids,
+        params: {}
+      };
+
+      if (action === 'assign_platform') payload.params.platform_id = document.getElementById('bulk-assign-platform-select').value;
+      if (action === 'remove_platform') payload.params.platform_id = document.getElementById('bulk-remove-platform-select').value;
+
+      const result = await postBulkOperation(payload);
+      alert(result.message || 'Bulk operation completed.');
+      closeModal(modalBulkEdit);
+      state.selection.enabled = false; // Disable selection mode after an action
+      // Refresh all data in the background, then re-render the current tab's view
+      await Promise.all([fetchGamesFromApi(), fetchPlatformsFromApi()]).then(([gameData, platformData]) => {
+        if (gameData) { state.allGames = gameData.games || []; state.allGamePlatforms = gameData.game_platforms || []; }
+        if (platformData) { state.allPlatforms = platformData.platforms || []; }
+        if (state.currentTab === 'games') applyFilters(); else renderPlatforms(state.allPlatforms);
+      });
+    });
+  }
 
   // --- In-Modal Platform Management ---
 

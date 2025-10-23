@@ -391,26 +391,48 @@ export async function populateGamePlatformsList(gameId) {
   }
 }
 
-export async function showEditGameModal(gameId, doOpen = true) {
-  const game = state.allGames.find(g => String(g.id) === String(gameId));
-  if (!game) {
-    alert('Game not found!');
-    return;
+/**
+ * Shows the game modal for editing a single game.
+ * @param {string} gameId - The ID of the game to edit.
+ * @param {boolean} [doOpen=true] - Whether to open the modal after populating.
+ * @param {boolean} [isBulkEdit=false] - If true, sets up the modal for bulk editing.
+ */
+export async function showEditGameModal(gameId, doOpen = true, isBulkEdit = false) {
+  let game;
+  if (!isBulkEdit) {
+    game = state.allGames.find(g => String(g.id) === String(gameId));
+    if (!game) {
+      alert('Game not found!');
+      return;
+    }
+  } else {
+    // For bulk edit, we don't need a specific game, just the context.
+    game = {}; // Use an empty object
   }
+
   const formGame = document.getElementById('form-game');
   const modalGame = document.getElementById('modal-game');
 
   formGame.reset();
   // Set button text for "Edit" mode
   formGame.querySelector('button[type="submit"]').textContent = 'Save & Close';
-  formGame.dataset.gameId = gameId;
-  document.getElementById('modal-game-title').textContent = 'Edit Game';
+  formGame.dataset.gameId = isBulkEdit ? '' : gameId;
+  document.getElementById('modal-game-title').textContent = isBulkEdit ? 'Bulk Edit Games' : 'Edit Game';
   formGame.querySelector('input[name="name"]').value = game.name || '';
   formGame.querySelector('textarea[name="description"]').value = game.description || '';
   formGame.querySelector('input[name="release_year"]').value = game.release_year || '';
   formGame.querySelector('input[name="cover_image_url"]').value = game.cover_image_url || '';
   formGame.querySelector('input[name="trailer_url"]').value = game.trailer_url || '';
   formGame.querySelector('input[name="tags"]').value = (game.tags || []).join(', ');
+
+  // --- Cleanup placeholders from bulk edit mode ---
+  if (!isBulkEdit) {
+    const fieldsToClean = ['description', 'release_year', 'cover_image_url', 'trailer_url', 'tags'];
+    fieldsToClean.forEach(field => {
+      const input = formGame.querySelector(`[name="${field}"]`);
+      if (input) input.placeholder = input.getAttribute('data-original-placeholder') || '';
+    });
+  }
 
   const gameType = game.is_derived_work ? 'derived' : (game.is_sequel ? 'sequel' : 'original');
   formGame.querySelector(`input[name="game_type"][value="${gameType}"]`).checked = true;
@@ -424,10 +446,118 @@ export async function showEditGameModal(gameId, doOpen = true) {
   document.getElementById('game-platforms-section').style.display = 'block';
   await populateGamePlatformsList(gameId);
   // Show clone/delete button group for "Edit" mode
-  formGame.querySelector('.btn-clone').parentElement.style.display = 'flex';
+  const actionButtons = formGame.querySelector('.btn-clone').parentElement;
+  actionButtons.style.display = isBulkEdit ? 'none' : 'flex';
+  // Hide/show elements based on mode
+  formGame.querySelector('.inline-radios').style.display = isBulkEdit ? 'none' : 'flex';
+  document.getElementById('bulk-edit-specific-fields').style.display = isBulkEdit ? 'block' : 'none';
+  document.getElementById('game-platforms-section').style.display = isBulkEdit ? 'none' : 'block';
+
+  // Hide the entire "Game Title" container in bulk edit mode
+  const nameInputContainer = formGame.querySelector('input[name="name"]').parentElement.parentElement;
+  nameInputContainer.style.display = isBulkEdit ? 'none' : 'block';
+  formGame.querySelector('input[name="name"]').disabled = isBulkEdit;
+
+  // Add checkboxes for bulk edit mode
+  formGame.querySelectorAll('label').forEach(label => {
+    const input = label.querySelector('input[type="text"], input[type="number"], textarea, input[type="radio"]');
+    if (input && input.name !== 'name') { // Exclude game title
+      const existingCheckbox = label.querySelector('.bulk-edit-enabler');
+      if (existingCheckbox) existingCheckbox.remove();
+
+      if (isBulkEdit) {
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'bulk-edit-enabler';
+        checkbox.dataset.enables = input.name;
+        label.classList.add('bulk-edit-field');
+
+        // Wrap the label's text node in a span for easier styling
+        Array.from(label.childNodes).forEach(node => {
+          if (node.nodeType === Node.TEXT_NODE && node.textContent.trim() !== '') {
+            const span = document.createElement('span');
+            span.textContent = node.textContent;
+            label.replaceChild(span, node);
+          }
+        });
+        label.prepend(checkbox);
+        input.disabled = true;
+
+        checkbox.addEventListener('change', (e) => {
+          if (input) input.disabled = !e.target.checked;
+        });
+      } else {
+        // Cleanup for non-bulk mode
+        if (existingCheckbox) existingCheckbox.remove();
+        label.classList.remove('bulk-edit-field');
+        if (input) input.disabled = false;
+      }
+    }
+  });
 
   if (doOpen) openModal(modalGame);
 }
+
+export async function showBulkEditGameModal() {
+  const selectedIds = state.selection.selectedGameIds;
+  if (selectedIds.size === 0) return;
+
+  // We call showEditGameModal with a null gameId and the bulk edit flag.
+  await showEditGameModal(null, true, true);
+
+  const formGame = document.getElementById('form-game');
+  const submitBtn = formGame.querySelector('button[type="submit"]');
+  document.getElementById('modal-game-title').textContent = `Bulk Edit Game Data (${selectedIds.size})`;
+  submitBtn.textContent = `Update ${selectedIds.size} Game(s)`;
+
+  // --- Create and inject bulk-edit specific fields ---
+  const specificFieldsContainer = document.getElementById('bulk-edit-specific-fields');
+  specificFieldsContainer.innerHTML = `
+    <div class="bulk-edit-field">
+      <input type="checkbox" class="bulk-edit-enabler" data-enables="is_derived_work">
+      <span>Is Remake/Remaster</span>
+      <div class="inline-radios" data-radio-group="is_derived_work">
+        <label><input type="radio" name="is_derived_work" value="true" disabled> Yes</label>
+        <label><input type="radio" name="is_derived_work" value="false" disabled> No</label>
+      </div>
+    </div>
+    <div class="bulk-edit-field">
+      <input type="checkbox" class="bulk-edit-enabler" data-enables="is_sequel">
+      <span>Is Sequel</span>
+      <div class="inline-radios" data-radio-group="is_sequel">
+        <label><input type="radio" name="is_sequel" value="true" disabled> Yes</label>
+        <label><input type="radio" name="is_sequel" value="false" disabled> No</label>
+      </div>
+    </div>
+  `;
+  // Wire up the new fields
+  specificFieldsContainer.querySelectorAll('.bulk-edit-enabler').forEach(enabler => {
+    enabler.addEventListener('change', (e) => {
+      const fieldName = e.target.dataset.enables;
+      specificFieldsContainer.querySelectorAll(`input[name="${fieldName}"]`).forEach(radio => radio.disabled = !e.target.checked);
+    });
+  });
+  
+  // Set placeholder text for fields
+  const games = Array.from(selectedIds).map(id => state.allGames.find(g => String(g.id) === id));
+  const fields = ['description', 'release_year', 'cover_image_url', 'trailer_url', 'tags'];
+
+  fields.forEach(field => {
+    const input = formGame.querySelector(`[name="${field}"]`);
+    const firstValue = games[0]?.[field];
+    const allSame = games.every(g => JSON.stringify(g[field]) === JSON.stringify(firstValue));
+
+    if (!allSame) {
+      input.placeholder = 'Multiple values - will be overwritten.';
+    } else {
+      // Store original placeholder before overwriting, if it's not already stored
+      if (!input.hasAttribute('data-original-placeholder')) {
+        input.setAttribute('data-original-placeholder', input.placeholder);
+      }
+    }
+  });
+}
+
 
 export function showEditPlatformModal(platformId, doOpen = true) {
   const platform = state.allPlatforms.find(p => p.id === platformId);

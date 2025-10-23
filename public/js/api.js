@@ -96,3 +96,47 @@ export async function fetchAutocomplete(query) {
     return null;
   }
 }
+
+/**
+ * Posts a bulk operation payload to the backend.
+ * @param {Object} payload - The bulk operation details.
+ * @returns {Promise<Object|null>} A promise that resolves to the server response or null on error.
+ */
+export async function postBulkOperation(payload) {
+  try {
+    const res = await fetch('/plugins/database_handler/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    // The backend returns JSON for both success and error cases, so we always parse it.
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  } catch (err) {
+    console.error('Bulk operation failed:', err);
+    // Return an object with an error property so the caller can display it.
+    return { error: err.message || 'An unknown network error occurred.' };
+  }
+}
+
+/**
+ * Posts a bulk edit operation for games.
+ * @param {Object} payload - The bulk operation details, including ids and fields to change.
+ * @returns {Promise<Object|null>} A promise that resolves to the server response or null on error.
+ */
+export async function postBulkEditGames(payload) {
+  try {
+    const res = await fetch('/plugins/database_handler/bulk_edit_games', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  } catch (err) {
+    console.error('Bulk edit games failed:', err);
+    return { error: err.message || 'An unknown network error occurred.' };
+  }
+}

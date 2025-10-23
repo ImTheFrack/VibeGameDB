@@ -55,6 +55,11 @@ export const state = {
     currentPage: 1,
     pageSize: 24, // Number of items to load per page/scroll
     totalPages: 1,
+  },
+  selection: {
+    enabled: false,
+    selectedGameIds: new Set(),
+    selectedPlatformIds: new Set(),
   }
 };
 
@@ -64,5 +69,7 @@ export function clearAllFilters() {
   state.currentFilters.tags = [];
   state.currentFilters.gameTypes = [];
   state.currentFilters.acquisitionMethods = [];
+  state.selection.selectedGameIds.clear();
+  state.selection.selectedPlatformIds.clear();
   document.getElementById('search-input').value = '';
 }

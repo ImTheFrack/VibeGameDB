@@ -82,6 +82,11 @@ body {
 .left-controls { display: flex; align-items: center; gap: 8px; }
 .active-filters { display: inline-block; margin-left: 12px; color: var(--muted); font-size: 12px; }
 
+/* Bulk actions bar */
+.bulk-actions-bar { display: flex; align-items: center; gap: 12px; padding: 10px 28px; background: rgba(79, 142, 247, 0.1); border-bottom: 1px solid rgba(79, 142, 247, 0.2); }
+.bulk-actions-bar span { font-weight: 500; }
+.bulk-actions-bar button:last-child { margin-left: auto; }
+
 /* Main grid for displaying game/platform cards */
 .display-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 18px; padding: 22px; align-items: start; }
 
@@ -98,7 +103,10 @@ body {
    ========================================================================== */
 
 /* Card styles for games and platforms */
-.card { background: linear-gradient(180deg, rgba(255, 255, 255, 0.01), transparent); padding: 12px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.02); display: flex; flex-direction: column; gap: 10px; }
+.card { position: relative; background: linear-gradient(180deg, rgba(255, 255, 255, 0.01), transparent); padding: 12px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.02); display: flex; flex-direction: column; gap: 10px; transition: background-color 0.2s ease-in-out; }
+.card.selected-card { background-color: rgba(79, 142, 247, 0.15); border-color: rgba(79, 142, 247, 0.3); }
+.card-checkbox { position: absolute; top: 8px; right: 8px; width: 20px; height: 20px; z-index: 10; accent-color: var(--accent-2); }
+
 .card-cover { width: 100%; height: auto; border-radius: 6px; object-fit: cover; }
 .card-body { padding: 6px 2px; }
 .card-title { margin: 0; font-size: 16px; }
@@ -144,6 +152,13 @@ body {
 .modal-header { display: flex; justify-content: space-between; align-items: center; }
 .modal-actions { display: flex; gap: 8px; justify-content: space-between; align-items: center; margin-top: 8px; }
 
+/* Styles for the bulk edit modal buttons */
+#bulk-actions-container { display: flex; flex-direction: column; gap: 12px; }
+.bulk-action-button-row { display: flex; gap: 0; }
+.bulk-action-button-row .btn { border-top-right-radius: 0; border-bottom-right-radius: 0; flex-shrink: 0; }
+.bulk-action-button-row select { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-top: 0; border-left: 0; }
+#bulk-actions-container > .btn { text-align: center; justify-content: center; }
+
 /* Styles specific to the CSV import modal */
 .csv-mapping-row { display: flex; align-items: center; gap: 8px; }
 .csv-mapping-row label { font-size: 12px; color: var(--muted); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-basis: 40%; }
@@ -187,6 +202,7 @@ body {
 .modal-form label { display: block; color: var(--text); }
 .modal-form input, .modal-form textarea, .modal-form select, .search-input, .controls-bar select {
   width: 100%;
+  margin-top: 4px;
   padding: 8px;
   border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.03);
@@ -195,6 +211,13 @@ body {
 }
 .search-input { min-width: 320px; }
 .controls-bar select { width: auto; padding: 6px 8px; }
+
+.modal-form .bulk-edit-field { display: flex; align-items: center; gap: 12px; }
+.modal-form .bulk-edit-field input.bulk-edit-enabler { width: auto; margin: 0; flex-shrink: 0; }
+.modal-form .bulk-edit-field span { flex-basis: 120px; flex-shrink: 0; text-align: right; }
+.modal-form .bulk-edit-field input:not([type="checkbox"]), .modal-form .bulk-edit-field textarea { margin-top: 0; flex-grow: 1; }
+.modal-form .bulk-edit-field .inline-radios { padding: 0; margin: 0; flex-grow: 1; }
+
 
 /* Layout for labels with buttons or sort controls */
 .label-with-button { display: flex; justify-content: space-between; align-items: center; }
@@ -241,6 +264,7 @@ body {
 
 /* Visual state for buttons when filters/options are active */
 .filters-on { background: var(--text); color: var(--bg); border-color: var(--text); }
+.selection-on { background: var(--accent-2); color: var(--bg); border-color: var(--accent-2); }
 .filters-on:hover { box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6); transform: none; }
 
 /* General helper for muted text */

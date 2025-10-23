@@ -785,6 +785,99 @@ def _fuzzy_match_words(query_words: List[str], target: str, threshold: float = 0
     return sum(scores) / len(scores) if scores else None
 
 
+def _bulk_operations(conn: sqlite3.Connection, data: Dict[str, Any]):
+    """
+    Handle bulk operations like mass delete, assign/remove platform.
+    """
+    action = data.get('action')
+    item_type = data.get('item_type')
+    ids = data.get('ids', [])
+    params = data.get('params', {})
+
+    if not all([action, item_type, ids]):
+        return (400, {'error': 'action, item_type, and ids are required.'})
+
+    cur = conn.cursor()
+    processed_count = 0
+
+    try:
+        if action == 'delete':
+            if item_type == 'game':
+                placeholders = ','.join('?' for _ in ids)
+                cur.execute(f'DELETE FROM games WHERE id IN ({placeholders})', ids)
+                processed_count = cur.rowcount
+            elif item_type == 'platform':
+                # Note: This is a force delete, ignoring orphan checks for simplicity in bulk mode.
+                placeholders = ','.join('?' for _ in ids)
+                cur.execute(f'DELETE FROM platforms WHERE id IN ({placeholders})', ids)
+                processed_count = cur.rowcount
+            else:
+                return (400, {'error': f'Unsupported item_type for delete: {item_type}'})
+
+        elif action == 'assign_platform':
+            if item_type != 'game':
+                return (400, {'error': 'assign_platform is only for games.'})
+            platform_id = params.get('platform_id')
+            if not platform_id:
+                return (400, {'error': 'platform_id is required for assign_platform.'})
+
+            # For simplicity, we insert one by one, ignoring duplicates.
+            # A more optimized version could use INSERT OR IGNORE with a subquery.
+            for game_id in ids:
+                try:
+                    # Assuming digital=true, acquisition=bulk_assign
+                    cur.execute('INSERT INTO game_platforms (game_id, platform_id, is_digital, acquisition_method) VALUES (?, ?, ?, ?)',
+                                (game_id, platform_id, True, 'bulk_assign'))
+                    processed_count += 1
+                except sqlite3.IntegrityError:
+                    # Ignore if the link already exists
+                    pass
+
+        elif action == 'remove_platform':
+            if item_type != 'game':
+                return (400, {'error': 'remove_platform is only for games.'})
+            platform_id = params.get('platform_id')
+            if not platform_id:
+                return (400, {'error': 'platform_id is required for remove_platform.'})
+
+            placeholders = ','.join('?' for _ in ids)
+            cur.execute(f'DELETE FROM game_platforms WHERE platform_id = ? AND game_id IN ({placeholders})', [platform_id] + ids)
+            processed_count = cur.rowcount
+
+        elif action == 'edit_fields':
+            if item_type != 'game':
+                return (400, {'error': 'edit_fields is only for games.'})
+            
+            fields_to_update = []
+            values_to_update = []
+            
+            # Iterate over editable columns and add them to the update query if present in params
+            for col in EDITABLE_GAME_COLUMNS:
+                if col in params:
+                    fields_to_update.append(f"{col} = ?")
+                    value = params[col]
+                    # Special handling for tags, which should be JSON
+                    if col == 'tags' and isinstance(value, list):
+                        values_to_update.append(json.dumps(value))
+                    else:
+                        values_to_update.append(value)
+            
+            if not fields_to_update:
+                return (400, {'error': 'No valid fields provided for update.'})
+
+            placeholders = ','.join('?' for _ in ids)
+            cur.execute(f'UPDATE games SET {", ".join(fields_to_update)} WHERE id IN ({placeholders})', values_to_update + ids)
+            processed_count = cur.rowcount
+        else:
+            return (400, {'error': f'Unknown bulk action: {action}'})
+
+        conn.commit()
+        return (200, {'status': 'ok', 'message': f'Successfully processed {processed_count} of {len(ids)} items.'})
+
+    except Exception as e:
+        conn.rollback()
+        return (500, {'error': f'An error occurred: {str(e)}'})
+
 def handle(req: Dict[str, Any]):
     """Main plugin entrypoint. Routes requests to the appropriate helpers.
 
@@ -896,6 +989,22 @@ def handle(req: Dict[str, Any]):
                     'platform_columns': EDITABLE_PLATFORM_COLUMNS,
                     'game_platform_columns': IMPORT_GAME_PLATFORM_COLUMNS
                 }
+            return (405, {'error': 'method not allowed'})
+
+        if sp.startswith('bulk'):
+            method = parsed.get('method', 'GET')
+            if method == 'POST':
+                body = parsed.get('json')
+                if body is None: return (400, {'error': 'invalid or missing JSON body'})
+                return _bulk_operations(conn, body)
+            return (405, {'error': 'method not allowed'})
+        
+        if sp.startswith('bulk_edit_games'):
+            method = parsed.get('method', 'POST')
+            if method == 'POST':
+                body = parsed.get('json')
+                if body is None: return (400, {'error': 'invalid or missing JSON body'})
+                return _bulk_operations(conn, body) # Reuse the same handler
             return (405, {'error': 'method not allowed'})
 
         return (404, {'error': 'unknown resource'})

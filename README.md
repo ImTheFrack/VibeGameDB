@@ -9,13 +9,13 @@ This repository contains a small Python stdlib HTTP server (`main.py`) which ser
 - `public/` — frontend single-page app shell and static assets:
   - `index.html` — SPA shell with header, search, tabs, controls, and modals (templates)
   - `css/style.css` — dark theme styles
-   - `js/main.js` — ES module entry point that wires the app together
-   - `js/state.js` — centralized state (games, platforms, filters, display options)
-   - `js/api.js` — tiny fetch helpers for plugin endpoints
-   - `js/render.js` — render functions for games and platforms
-   - `js/filters.js` — filter logic and active filter display
-   - `js/modals.js` — modal open/close helpers and modal population
-   - `js/events.js` — DOM event wiring and form handlers
+  - `js/main.js` — ES module entry point that wires the app together
+  - `js/state.js` — centralized state (games, platforms, filters, display options)
+  - `js/api.js` — tiny fetch helpers for plugin endpoints
+  - `js/render.js` — render functions for games and platforms
+  - `js/filters.js` — filter logic and active filter display
+  - `js/modals.js` — modal open/close helpers and modal population
+  - `js/events.js` — DOM event wiring and form handlers
   - `img/` — local SVG placeholder images that can be used by examples
 - `handlers/` — plugin modules (each exports `handle(req)`):
   - `config_handler.py` - reads config.values and exposes it under the plugin loaders
@@ -26,7 +26,7 @@ This repository contains a small Python stdlib HTTP server (`main.py`) which ser
   - `seed_handler.py` — make dummy data if no database.
 - `config.py` — central configuration (AI endpoint, DB path, app title)
 - `data/` — SQLite database file (`gamedb.sqlite`) and other persistent data
-- `scripts/`— test scripts
+- `scripts/`— test scripts (examples)
   - `check_imports.py` — check if imports are properly imported in python
   - `db_integration_test.py` — check if database CRUD tools (database_handler) is working
 
@@ -141,20 +141,19 @@ Links games to platforms and tracks how you obtained each copy and in what forma
    - Autocomplete as you type (name, description, tags, platform names)
    - Full-text search fallback
    - Dropdown suggestions with game/platform previews
-   - Basic fuzzy Logic (OR basics).
-
-3. **Bulk Operations**
+   - Basic fuzzy Logic (OR basics, really).
+   - Advanced fuzzy logic (character, word, and substring-level-matching)
+ - **Bulk Operations**
    - Bulk select and mass-edit (e.g., change acquisition method for multiple games)
      - any field can be mass edited but obivously some will make more sense than others
      - mass delete
      - mass assign platform
-
-4. **Smart Add Game** — Intelligent game addition workflow:
-   - Quick "+" button to add a new game
+ - **Smart Add Game** — Intelligent game addition workflow:
+   - Quick "Add Game" button to add a new game from search
    - Autocomplete to find existing games in your library
    - If found, quickly add it to another platform
-   - If new, a derived work, or a sequel, use IGDB or AI to auto-populate details
-   - Ability to link derived works/sequels to original games
+   - TODO: If new, a derived work, or a sequel, use IGDB or AI to auto-populate details
+   - TODO: Ability to link derived works/sequels to original games
 
 5. **AI Enrichment** — Supplement game data using AI:
    - Auto-generate or improve descriptions and summaries

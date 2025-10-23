@@ -1,32 +1,40 @@
 'use strict';
 import { state } from './state.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, normalizeName } from './utils.js';
 
 /**
  * Rendering functions responsible for translating state into DOM.
  *
  * No network or business logic here; these functions read `state` and
  * the provided arrays, and update the `#display-grid` accordingly.
+ * - renderGames: builds and injects game cards
+ * - renderPlatforms: builds and injects platform cards
+ * - renderBulkActionsBar: shows/hides the bulk action bar and updates its count
+ * - renderPagination: builds and injects pagination controls
  */
 
-// Render an array of games into the display grid
-export function renderGames(games, clear = true) { // The clear parameter was from a previous iteration, let's fix it.
+/**
+ * Renders a grid of game cards.
+ * @param {Array<object>} games - The array of game objects to render.
+ */
+export function renderGames(games) {
   const grid = document.getElementById('display-grid');
-  if (!grid) return;
+  grid.innerHTML = '';
+  const { selection } = state;
 
-  if (!Array.isArray(games) || games.length === 0) {
-    grid.innerHTML = '<p class="muted">No games found.</p>';
+  if (!games || games.length === 0) {
+    grid.innerHTML = '<p class="muted">No games found. Try adjusting your filters or adding a new game.</p>';
     return;
   }
 
-  if (clear) grid.innerHTML = '';
-
-  const fragment = document.createDocumentFragment();
   games.forEach(game => {
-    const card = document.createElement('article');
-    card.className = 'card game-card';
-
-    const gamePlatformLinks = state.allGamePlatforms.filter(gp => gp.game_id === game.id);
+    const gamePlatformLinks = state.allGamePlatforms.filter(gp => String(gp.game_id) === String(game.id));
+    const card = document.createElement('div');
+    card.className = 'card';
+    if (selection.selectedGameIds.has(String(game.id))) {
+      card.classList.add('selected-card');
+    }
+    card.dataset.gameId = game.id;
     const platformsHtml = gamePlatformLinks
       .map(gp => {
         const platform = state.allPlatforms.find(p => p.id === gp.platform_id);
@@ -41,64 +49,111 @@ export function renderGames(games, clear = true) { // The clear parameter was fr
       .map(tag => `<span class="tag" data-tag="${escapeHtml(tag)}">${escapeHtml(tag)}</span>`)
       .join(' ');
 
-    const coverHtml = state.displayOptions.show_cover ? `<img class="card-cover" src="${game.cover_image_url || '/img/cover_placeholder.svg'}" alt="cover" onerror="this.src='/img/cover_placeholder.svg'">` : '';
-    const titleHtml = state.displayOptions.show_title ? `<h3 class="card-title">${escapeHtml(game.name)}</h3>` : '';
-    const descHtml = state.displayOptions.show_description ? `<p class="card-desc">${escapeHtml(game.description || '')}</p>` : '';
+    const coverHtml = state.displayOptions.show_cover ? `<img class="card-cover" src="${game.cover_image_url || '/img/cover_placeholder.svg'}" alt="${game.name} cover" onerror="this.src='/img/cover_placeholder.svg'">` : '';
+    const titleHtml = `<h3 class="card-title">${escapeHtml(game.name)}</h3>`;
+    const descHtml = (state.displayOptions.show_description && game.description) ? `<p class="card-desc">${escapeHtml(game.description)}</p>` : '';
     const tagsBlockHtml = (state.displayOptions.show_tags && tagsHtml) ? `<div class="tags">${tagsHtml}</div>` : '';
-    const platformsBlockHtml = state.displayOptions.show_platforms ? `<div class="platform-icons">${platformsHtml || '<span class="muted">No platforms</span>'}</div>` : '';
+    const platformsBlockHtml = state.displayOptions.show_platforms ? `<div class="platform-icons">${platformsHtml || '<span class="muted" style="font-size:12px;">No platforms</span>'}</div>` : '';
 
     card.innerHTML = `
+      ${selection.enabled
+        ? `<input type="checkbox"
+                  class="card-checkbox"
+                  data-id="${game.id}"
+                  ${selection.selectedGameIds.has(String(game.id)) ? 'checked' : ''}>` : ''}
       ${coverHtml}
       <div class="card-body">
         ${titleHtml}
         ${descHtml}
         ${tagsBlockHtml}
         ${platformsBlockHtml}
-        <div class="card-actions">
-          <button class="btn btn-sm edit-game" data-id="${game.id}">Edit</button>
-          <button class="btn btn-sm add-to-platform" data-id="${game.id}">Add Platform</button>
-        </div>
+      </div>
+      <div class="card-actions">
+        <button class="btn btn-sm edit-game" data-id="${game.id}">Edit</button>
+        <button class="btn btn-sm add-to-platform" data-id="${game.id}">+ Platform</button>
       </div>
     `;
 
-    fragment.appendChild(card);
+    grid.appendChild(card);
   });
-  grid.append(fragment);
 }
 
 export function renderPlatforms(platforms) {
   const grid = document.getElementById('display-grid');
-  if (!grid) return;
   grid.innerHTML = '';
+  const { selection } = state;
 
-  if (!Array.isArray(platforms) || platforms.length === 0) {
-    grid.innerHTML = '<p class="muted">No platforms found.</p>';
+  if (!platforms || platforms.length === 0) {
+    grid.innerHTML = '<p class="muted">No platforms found. Try adding one.</p>';
     return;
   }
-
-  platforms.forEach(p => {
-    const card = document.createElement('article');
-    card.className = 'card platform-card';
+  platforms.forEach(platform => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    if (selection.selectedPlatformIds.has(platform.id)) {
+      card.classList.add('selected-card');
+    }
+    card.dataset.platformId = platform.id;
+    const gameCount = state.allGamePlatforms.filter(gp => gp.platform_id === platform.id).length;
 
     const formats = [];
-    if (p.supports_digital) formats.push('Digital');
-    if (p.supports_physical) formats.push('Physical');
-    const formatStr = formats.join(' • ');
-
-    const gameCount = state.allGamePlatforms.filter(gp => gp.platform_id === p.id).length;
+    if (platform.supports_digital) formats.push('Digital');
+    if (platform.supports_physical) formats.push('Physical');
+    const format = formats.join(' & ');
 
     card.innerHTML = `
-      <img class="card-cover" src="${p.icon_url || '/img/icon_placeholder.svg'}" alt="icon" onerror="this.src='/img/icon_placeholder.svg'">
+      ${selection.enabled
+        ? `<input type="checkbox"
+                  class="card-checkbox"
+                  data-id="${platform.id}"
+                  ${selection.selectedPlatformIds.has(platform.id) ? 'checked' : ''}>` : ''}
+      <img src="${platform.image_url || platform.icon_url || '/img/icon_placeholder.svg'}" alt="${platform.name}" class="card-cover" onerror="this.src='/img/icon_placeholder.svg'">
       <div class="card-body">
-        <h3 class="card-title">${escapeHtml(p.name)}</h3>
-        <p class="card-desc">${escapeHtml(formatStr)} • <a href="#" class="filter-by-platform" data-platform-id="${p.id}">${gameCount} games</a></p>
-        <div class="card-actions"><button class="btn btn-sm edit-platform" data-id="${p.id}">Edit</button></div>
+        <h3 class="card-title">${escapeHtml(platform.name)}</h3>
+        <p class="card-desc">${escapeHtml(format)} • <a href="#" class="filter-by-platform" data-platform-id="${platform.id}">${gameCount} games</a></p>
+      </div>
+      <div class="card-actions">
+        <button class="btn btn-sm edit-platform" data-id="${platform.id}">Edit</button>
       </div>
     `;
     grid.appendChild(card);
   });
 }
 
+export function renderBulkActionsBar() {
+  const bar = document.getElementById('bulk-actions-bar');
+  const countEl = document.getElementById('bulk-actions-count');
+  const btnSelect = document.getElementById('btn-select-multiple');
+  const btnBulkEdit = document.getElementById('bulk-action-edit');
+
+  const selectedCount = state.currentTab === 'games'
+    ? state.selection.selectedGameIds.size
+    : state.selection.selectedPlatformIds.size;
+
+  btnSelect.classList.toggle('selection-on', state.selection.enabled);
+
+  if (state.selection.enabled) {
+    bar.style.display = 'flex';
+    countEl.textContent = `${selectedCount} item${selectedCount !== 1 ? 's' : ''} selected`;
+
+    // Per user request, disable bulk editing for platforms for now.
+    if (state.currentTab === 'platforms') {
+      btnBulkEdit.disabled = true;
+      btnBulkEdit.title = 'Coming soon.';
+    } else {
+      btnBulkEdit.disabled = false;
+      btnBulkEdit.title = 'Edit selected items';
+    }
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+/**
+ * Renders pagination controls.
+ * @param {number} currentPage - The current active page.
+ * @param {number} totalPages - The total number of pages.
+ */
 export function renderPagination() {
   const { currentPage, totalPages } = state.pagination;
   const topContainer = document.getElementById('pagination-top');
