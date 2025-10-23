@@ -129,12 +129,11 @@ def _guess_mapping(headers: List[str], known_platforms: Optional[Dict[str, str]]
             mapping[h] = 'description'
         elif 'cover' in lower or 'image' in lower:
             mapping[h] = 'cover_image_url'
-        elif 'trailer' in lower or 'youtube' in lower:
-            mapping[h] = 'trailer_url'
-        elif 'remake' in lower:
-            mapping[h] = 'is_remake'
-        elif 'remaster' in lower:
-            mapping[h] = 'is_remaster'
+        elif 'trailer' in lower or 'youtube' in lower: mapping[h] = 'trailer_url'
+        elif 'remake' in lower or 'remaster' in lower:
+            mapping[h] = 'is_derived_work'
+        elif 'sequel' in lower:
+            mapping[h] = 'is_sequel'
         elif 'tag' in lower or 'genre' in lower:
             mapping[h] = 'tags'
         elif 'year' in lower or 'release' in lower:
@@ -164,7 +163,7 @@ def _coerce_value(field: str, value: str):
     if value is None:
         return None
     v = value.strip()
-    if field in ('is_remake', 'is_remaster'):
+    if field in ('is_derived_work', 'is_sequel'):
         if v.lower() in ('1', 'true', 'yes', 'y'):
             return True
         if v.lower() in ('0', 'false', 'no', 'n'):
@@ -236,15 +235,15 @@ def _insert_game_and_links(conn: sqlite3.Connection, game_obj: Dict[str, Any], p
     else:
         # create new
         cur.execute(
-            'INSERT INTO games (name, description, release_year, cover_image_url, trailer_url, is_remake, is_remaster, related_game_id, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO games (name, description, release_year, cover_image_url, trailer_url, is_derived_work, is_sequel, related_game_id, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
             (
                 game_obj.get('name'),
                 game_obj.get('description'),
                 game_obj.get('release_year'),
                 game_obj.get('cover_image_url'),
                 game_obj.get('trailer_url'),
-                int(bool(game_obj.get('is_remake'))),
-                int(bool(game_obj.get('is_remaster'))),
+                int(bool(game_obj.get('is_derived_work'))),
+                int(bool(game_obj.get('is_sequel'))),
                 game_obj.get('related_game_id'),
                 json.dumps(game_obj.get('tags') or [])
             )
@@ -457,7 +456,7 @@ def handle(req: Dict[str, Any]):
                     coerced = _coerce_value(mapped, val)
                     if mapped == 'tags':
                         game_obj['tags'] = coerced
-                    elif mapped in ('is_remake', 'is_remaster'):
+                    elif mapped in ('is_derived_work', 'is_sequel'):
                         game_obj[mapped] = coerced
                     else:
                         game_obj[mapped] = coerced
@@ -489,8 +488,8 @@ def handle(req: Dict[str, Any]):
                     game_obj.get('release_year'),
                     game_obj.get('cover_image_url'),
                     game_obj.get('trailer_url'),
-                    int(bool(game_obj.get('is_remake'))),
-                    int(bool(game_obj.get('is_remaster'))),
+                    int(bool(game_obj.get('is_derived_work'))),
+                    int(bool(game_obj.get('is_sequel'))),
                     game_obj.get('related_game_id'),
                     json.dumps(game_obj.get('tags') or [])
                 ))
@@ -504,7 +503,7 @@ def handle(req: Dict[str, Any]):
                 try:
                     # Batch insert games
                     cur = conn.cursor()
-                    cur.executemany('INSERT INTO games (name, description, release_year, cover_image_url, trailer_url, is_remake, is_remaster, related_game_id, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', games_to_insert)
+                    cur.executemany('INSERT INTO games (name, description, release_year, cover_image_url, trailer_url, is_derived_work, is_sequel, related_game_id, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', games_to_insert)
                     created_games = cur.rowcount
 
                     # Now that games are inserted, create a map of name -> new_id

@@ -119,6 +119,77 @@ export async function populateFilterModal() {
     renderTags();
   }
 
+  // --- Game Type ---
+  const gameTypeContainer = document.getElementById('filter-game-type');
+  if (gameTypeContainer) {
+    gameTypeContainer.innerHTML = '';
+    const statuses = [
+      { value: 'original', text: 'Original Game' },
+      { value: 'derived', text: 'Remake / Remaster' },
+      { value: 'sequel', text: 'Sequel' }
+    ];
+    statuses.forEach(s => {
+      const inputId = `filter-type-${s.value}`;
+      const isChecked = state.currentFilters.gameTypes.includes(s.value);
+      gameTypeContainer.innerHTML += `
+        <input type="checkbox" value="${s.value}" id="${inputId}" ${isChecked ? 'checked' : ''}>
+        <label for="${inputId}">
+          <span class="pill-box">${isChecked ? '✓' : ''}</span> ${s.text}
+        </label>
+      `;
+    });
+    updatePillEventListeners('#filter-game-type');
+  }
+
+  // --- Acquisition Method ---
+  const acquisitionContainer = document.getElementById('filter-acquisition');
+  const acquisitionSortSelect = document.getElementById('filter-acquisition-sort-select');
+  if (acquisitionContainer && acquisitionSortSelect) {
+    const acquisitionCounts = {};
+    const acquisitionMethods = new Set();
+    state.allGamePlatforms.forEach(gp => {
+      if (gp.acquisition_method) {
+        acquisitionMethods.add(gp.acquisition_method);
+        acquisitionCounts[gp.acquisition_method] = (acquisitionCounts[gp.acquisition_method] || 0) + 1;
+      }
+    });
+
+    const renderAcquisitionMethods = () => {
+      acquisitionContainer.innerHTML = '';
+      let sortedMethods = Array.from(acquisitionMethods);
+      const sortMethod = acquisitionSortSelect.value;
+
+      sortedMethods.sort((a, b) => {
+        const countA = acquisitionCounts[a] || 0;
+        const countB = acquisitionCounts[b] || 0;
+        switch (sortMethod) {
+          case 'name_desc': return b.localeCompare(a);
+          case 'count_asc': return countA - countB;
+          case 'count_desc': return countB - countA;
+          case 'name_asc':
+          default: return a.localeCompare(b);
+        }
+      });
+
+      sortedMethods.forEach(method => {
+        const count = acquisitionCounts[method] || 0;
+        const inputId = `filter-acq-${method.replace(/[^a-zA-Z0-9]/g, '')}`;
+        const isChecked = state.currentFilters.acquisitionMethods.includes(method);
+        acquisitionContainer.innerHTML += `
+          <input type="checkbox" value="${method}" id="${inputId}" ${isChecked ? 'checked' : ''}>
+          <label for="${inputId}">
+            <span class="pill-box">${isChecked ? '✓' : ''}</span> ${method} <span class="pill-count">(${count})</span>
+          </label>
+        `;
+      });
+      updatePillEventListeners('#filter-acquisition');
+    };
+
+    acquisitionSortSelect.removeEventListener('change', renderAcquisitionMethods);
+    acquisitionSortSelect.addEventListener('change', renderAcquisitionMethods);
+    renderAcquisitionMethods();
+  }
+
   // --- Helper to wire up pill checkmark logic ---
   function updatePillEventListeners(containerSelector) {
     document.querySelectorAll(`${containerSelector} input[type="checkbox"]`).forEach(checkbox => {
@@ -340,7 +411,7 @@ export async function showEditGameModal(gameId, doOpen = true) {
   formGame.querySelector('input[name="trailer_url"]').value = game.trailer_url || '';
   formGame.querySelector('input[name="tags"]').value = (game.tags || []).join(', ');
 
-  const gameType = game.is_remake ? 'remake' : (game.is_remaster ? 'remaster' : 'original');
+  const gameType = game.is_derived_work ? 'derived' : (game.is_sequel ? 'sequel' : 'original');
   formGame.querySelector(`input[name="game_type"][value="${gameType}"]`).checked = true;
   const linkSection = document.getElementById('link-game-section');
   linkSection.style.display = gameType !== 'original' ? 'block' : 'none';
@@ -362,7 +433,7 @@ export async function showEditGameModal(gameId, doOpen = true) {
 import { postCsvPreview, postCsvImport, igdbSearch } from './api.js';
 
 function mkSelectForHeader(header, selected, platforms) {
-  const fields = ['', 'name', 'description', 'cover_image_url', 'trailer_url', 'is_remake', 'is_remaster', 'tags', 'acquisition_hint'];
+  const fields = ['', 'name', 'description', 'cover_image_url', 'trailer_url', 'is_derived_work', 'is_sequel', 'tags', 'acquisition_hint'];
   const wrap = document.createElement('div');
   wrap.className = 'csv-mapping-row';
   const label = document.createElement('label');

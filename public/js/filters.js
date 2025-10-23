@@ -78,6 +78,30 @@ export function applyFilters() {
     });
   }
 
+  // Game Type (Original, Derived, Sequel)
+  if (currentFilters.gameTypes.length > 0) {
+    filtered = filtered.filter(game => {
+      if (currentFilters.gameTypes.includes('original') && !game.is_derived_work && !game.is_sequel) return true;
+      if (currentFilters.gameTypes.includes('derived') && game.is_derived_work) return true;
+      if (currentFilters.gameTypes.includes('sequel') && game.is_sequel) return true;
+      return false;
+    });
+  }
+
+  // Acquisition Method
+  if (currentFilters.acquisitionMethods.length > 0) {
+    const gameIdsWithMethod = new Set();
+    state.allGamePlatforms.forEach(gp => {
+      if (currentFilters.acquisitionMethods.includes(gp.acquisition_method)) {
+        gameIdsWithMethod.add(String(gp.game_id));
+      }
+    });
+
+    filtered = filtered.filter(game => {
+      return gameIdsWithMethod.has(String(game.id));
+    });
+  }
+
   // Sorting
   if (sortSelect) {
     const sortMethod = sortSelect.value;
@@ -138,6 +162,8 @@ export function updateActiveFiltersDisplay() {
   if (state.currentFilters.keyword) count += 1;
   if (Array.isArray(state.currentFilters.platforms)) count += state.currentFilters.platforms.length;
   if (Array.isArray(state.currentFilters.tags)) count += state.currentFilters.tags.length;
+  if (Array.isArray(state.currentFilters.gameTypes)) count += state.currentFilters.gameTypes.length;
+  if (Array.isArray(state.currentFilters.acquisitionMethods)) count += state.currentFilters.acquisitionMethods.length;
 
   if (btn) {
     if (count > 0) {

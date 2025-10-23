@@ -3,24 +3,24 @@
 ## Data Flow Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────────────┐
 │                        Browser (Frontend)                        │
-│                                                                   │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │              public/index.html (SPA Shell)               │   │
-│  │  - Header with buttons (Add Game, Add Platform, Import)  │   │
-│  │  - Tabs (Games, Platforms)                               │   │
+│                                                                  │
+│  ┌───────────────────────────────────────────────────────────┐   │
+│  │              public/index.html (SPA Shell)                │   │
+│  │  - Header with buttons (Add Game, Add Platform, Import)   │   │
+│  │  - Tabs (Games, Platforms)                                │   │
 │  │  - Display grid (renders cards)                           │   │
-│  │  - Modals (game form, platform form, import form)        │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                              ▲                                    │
-│                              │                                    │
-│                         (renders)                                 │
-│                              │                                    │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │            public/js/main.js (Entry, ES Modules)         │   │
+│  │  - Modals (game form, platform form, import form)         │   │
+│  └───────────────────────────────────────────────────────────┘   │
+│                              ▲                                   │
+│                              │                                   │
+│                         (renders)                                │
+│                              │                                   │
+│  ┌───────────────────────────────────────────────────────────┐   │
+│  │            public/js/main.js (Entry, ES Modules)          │   │
 │  │                                                           │   │
-│  │  Modules & Responsibilities:                               │   │
+│  │  Modules & Responsibilities:                              │   │
 │  │  - main.js: bootstraps app, loads config, seeds DB,       │   │
 │  │    initializes events, ensures Games tab selected         │   │
 │  │  - state.js: centralized state (games/platforms/filters)  │   │
@@ -43,17 +43,17 @@
 │  │  - renderGames(data)                                      │   │
 │  │  - renderPlatforms(data)                                  │   │
 │  │                                                           │   │
-│  │  Filtering & Display (via filters.js & modals.js):         │   │
-│  │  - applyFilters() — multi-criteria filtering               │   │
-│  │  - populateFilterModal() — populate filter options         │   │
-│  │  - updateActiveFiltersDisplay() — show active filters      │   │
-│  │  - displayOptions stored in state; applied by render.js    │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                              ▲                                    │
-│                              │                                    │
-│                         (HTTP/JSON)                               │
-│                              │                                    │
-└──────────────────────────────┼────────────────────────────────────┘
+│  │  Filtering & Display (via filters.js & modals.js):        │   │
+│  │  - applyFilters() — multi-criteria filtering              │   │
+│  │  - populateFilterModal() — populate filter options        │   │
+│  │  - updateActiveFiltersDisplay() — show active filters     │   │
+│  │  - displayOptions stored in state; applied by render.js   │   │
+│  └───────────────────────────────────────────────────────────┘   │
+│                              ▲                                   │
+│                              │                                   │
+│                         (HTTP/JSON)                              │
+│                              │                                   │
+└──────────────────────────────┼───────────────────────────────────┘
                                │
                     ┌──────────┴──────────┐
                     │                     │
@@ -71,9 +71,9 @@
         ┌──────────────────────────────────────────────┐
         │         Python HTTP Server (main.py)         │
         │                                              │
-        │  - ThreadingHTTPServer                        │
-        │  - Plugin loader (loads handlers/)            │
-        │  - Routes /plugins/<name> to handlers         │
+        │  - ThreadingHTTPServer                       │
+        │  - Plugin loader (loads handlers/)           │
+        │  - Routes /plugins/<name> to handlers        │
         └──────────────────────────────────────────────┘
                                │
                                ▼
@@ -84,21 +84,21 @@
         │  - Games: _list, _create, _update, _delete   │
         │  - Platforms: _list, _create, _update, _del  │
         │  - Game-Platforms: _list, _create, _update,  │
-        │    _delete ✨ NEW                            │
+        │    _delete                                   │
         └──────────────────────────────────────────────┘
                                │
                                ▼
-        ┌──────────────────────────────────────────────┐
-        │         SQLite Database                      │
-        │         (data/gamedb.sqlite)                 │
-        │                                              │
+        ┌───────────────────────────────────────────────┐
+        │         SQLite Database                       │
+        │         (data/gamedb.sqlite)                  │
+        │                                               │
         │  Tables:                                      │
-        │  - games (id, name, tags, is_remake, ...)    │
-        │  - platforms (id, name, supports_digital,    │
-        │    supports_physical, ...)                   │
-        │  - game_platforms (id, game_id, platform_id, │
-        │    is_digital, acquisition_method) ✨ NEW    │
-        └──────────────────────────────────────────────┘
+        │  - games (id, name, tags, is_serivedwork, ...)│
+        │  - platforms (id, name, supports_digital,     │
+        │    supports_physical, ...)                    │
+        │  - game_platforms (id, game_id, platform_id,  │
+        │    is_digital, acquisition_method)            │
+        └───────────────────────────────────────────────┘
 ```
 
 ## Component Interactions

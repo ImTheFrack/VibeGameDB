@@ -103,15 +103,15 @@
                 <label>Game Title<input type="text" name="name" required></label>
                 <label>Description<textarea name="description"></textarea></label>
                 <label>Release Year<input type="number" name="release_year" min="1970" max="2100"></label>
-                <label>Cover Image URL<input type="url" name="cover_image_url"></label>
-                <label>Trailer URL<input type="url" name="trailer_url"></label>
+                <label>Cover Image URL<input type="text" name="cover_image_url" placeholder="e.g., /img/cover.svg or https://..."></label>
+                <label>Trailer URL<input type="text" name="trailer_url" placeholder="e.g., /trailers/promo.mp4 or https://..."></label>
                 <label>Tags (comma-separated)<input type="text" name="tags" placeholder="e.g., action, RPG, indie"></label>
 
                 <div class="inline-radios">
                     <span>Type:</span>
-                    <label><input type="radio" name="game_type" value="original" checked> Original</label>
-                    <label><input type="radio" name="game_type" value="remake"> Remake</label>
-                    <label><input type="radio" name="game_type" value="remaster"> Remaster</label>
+                    <label><input type="radio" name="game_type" value="original" checked> Original Game</label>
+                    <label><input type="radio" name="game_type" value="derived"> Remake / Remaster</label>
+                    <label><input type="radio" name="game_type" value="sequel"> Sequel</label>
                 </div>
                 <div id="link-game-section" style="display:none;">
                     <label>Link to Original Game
@@ -198,8 +198,8 @@
                     <label><input type="checkbox" name="supports_physical"> Physical</label>
                 </div>
                 <label>Description<textarea name="description"></textarea></label>
-                <label>Icon URL<input type="url" name="icon_url"></label>
-                <label>Image URL<input type="url" name="image_url"></label>
+                <label>Icon URL<input type="text" name="icon_url" placeholder="e.g., /img/icon.svg or https://..."></label>
+                <label>Image URL<input type="text" name="image_url" placeholder="e.g., /img/banner.jpg or https://..."></label>
                 <label>Year Acquired<input type="number" name="year_acquired" min="1980" max="2100"></label>
                 <div class="modal-actions">
                     <button type="submit" class="btn btn-primary">Save</button>
@@ -312,6 +312,28 @@
                     </div>
                 </div>
 
+                <div>
+                    <label>Filter by Type</label>
+                    <div id="filter-game-type" class="pill-group">
+                        <!-- JS will populate game type status checkboxes -->
+                    </div>
+                </div>
+
+                <div>
+                    <div class="label-with-button" style="margin-bottom: 8px;">
+                        <label>Filter by Acquisition Method</label>
+                        <div class="sort-controls">
+                            <span>Sort by:</span>
+                            <select id="filter-acquisition-sort-select">
+                                <option value="name_asc">Name (A-Z)</option>
+                                <option value="name_desc">Name (Z-A)</option>
+                                <option value="count_desc">Usage (Most)</option>
+                                <option value="count_asc">Usage (Fewest)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="filter-acquisition" class="pill-group scrollable-pill-group"></div>
+                </div>
                 <div class="modal-actions">
                     <button type="submit" class="btn btn-primary">Apply Filters</button>
                     <button type="button" id="btn-clear-filters" class="btn">Clear All</button>
@@ -325,7 +347,7 @@
     <div id="modal-display" class="modal" aria-hidden="true">
         <div class="modal-content">
             <header class="modal-header">
-                <h2>Display Options</h2>
+                <h2>Card Display Options</h2>
                 <button class="modal-close" data-close>&times;</button>
             </header>
             <form id="form-display" class="modal-form">

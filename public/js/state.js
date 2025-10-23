@@ -46,6 +46,10 @@ export const state = {
     platforms: [],
     /** Array of selected tag strings */
     tags: [],
+    /** Array of selected game types: 'original', 'derived', 'sequel' */
+    gameTypes: [],
+    /** Array of selected acquisition methods */
+    acquisitionMethods: [],
   },
   pagination: {
     currentPage: 1,

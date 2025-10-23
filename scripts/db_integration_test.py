@@ -94,27 +94,21 @@ try:
             'description': 'Action RPG by FromSoftware',
             'cover_image_url': '/img/elden_ring.svg',
             'trailer_url': 'https://example.com/trailer1',
-            'tags': ['action', 'RPG', 'souls-like'],
-            'is_remake': False,
-            'is_remaster': False
+            'tags': ['action', 'RPG', 'souls-like']
         },
         {
             'name': 'Hades',
             'description': 'Roguelike dungeon crawler',
             'cover_image_url': '/img/hades.svg',
             'trailer_url': 'https://example.com/trailer2',
-            'tags': ['roguelike', 'indie'],
-            'is_remake': False,
-            'is_remaster': False
+            'tags': ['roguelike', 'indie']
         },
         {
             'name': 'Baldur\'s Gate 3',
             'description': 'Turn-based RPG',
             'cover_image_url': '/img/bg3.svg',
             'trailer_url': '',
-            'tags': ['RPG', 'turn-based'],
-            'is_remake': False,
-            'is_remaster': False
+            'tags': ['RPG', 'turn-based']
         }
     ]
 

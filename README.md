@@ -60,9 +60,9 @@ Represents games in your collection, with metadata and relationships to platform
 | `description` | TEXT | Game description or summary |
 | `cover_image_url` | TEXT | URL or path to cover art |
 | `trailer_url` | TEXT | URL to game trailer |
-| `is_remake` | BOOLEAN | Whether this is a remake of another game |
-| `is_remaster` | BOOLEAN | Whether this is a remaster of another game |
-| `related_game_id` | INTEGER | Foreign key to another game (if remake/remaster) |
+| `is_derived_work` | BOOLEAN | Whether this is a remake or remaster of another game |
+| `is_sequel` | BOOLEAN | Whether this is a sequel to another game |
+| `related_game_id` | INTEGER | Foreign key to another game (if derived or sequel) |
 | `tags` | TEXT | JSON array of tags (e.g., `["action", "RPG", "indie"]`) |
 | `created_at` | TIMESTAMP | Record creation timestamp |
 | `updated_at` | TIMESTAMP | Record last update timestamp |
@@ -93,6 +93,7 @@ Links games to platforms and tracks how you obtained each copy and in what forma
 - Deleting a platform should cascade-delete its game_platforms entries; if a game loses all platforms, it becomes an orphan and should be handled carefully (warn user or auto-delete).
 - Deleting a game cascades to game_platforms entries.
 - Remakes/remasters can reference other games via `related_game_id` to maintain a game family tree.
+- Derived works (remakes/remasters) or sequels can reference other games via `related_game_id`.
 
 ## Features
 
@@ -133,8 +134,8 @@ Links games to platforms and tracks how you obtained each copy and in what forma
    - Cascade warnings when deleting platforms with games
 
 1. **Browse & Filter** — View games and platforms in a Netflix-style scrollable interface with:
-   - Sortable columns (name, date added, platform count, etc.) - dropdown right now is a dummy
-   - Pagination and lazy loading
+   - ✅ IMPLEMENTED: Sortable columns (name, date added, platform count, etc.) - dropdown right now is a dummy
+   - ✅ IMPLEMENTED: Pagination and lazy loading
    - ✅ IMPLEMENTED: Filter by platform, tag, keyword
    - ✅ IMPLEMENTED: Modern Filter UI
    - TODO: Filter by acquisition method, remake/remaster status
@@ -155,8 +156,8 @@ Links games to platforms and tracks how you obtained each copy and in what forma
    - Quick "+" button to add a new game
    - Autocomplete to find existing games in your library
    - If found, quickly add it to another platform
-   - If new or a remake/remaster, use IGDB or AI to auto-populate details
-   - Ability to link remakes/remasters to original games
+   - If new, a derived work, or a sequel, use IGDB or AI to auto-populate details
+   - Ability to link derived works/sequels to original games
 
 5. **AI Enrichment** — Supplement game data using AI:
    - Auto-generate or improve descriptions and summaries
@@ -301,7 +302,7 @@ The features listed above are prioritized by user value and implementation compl
 - Edit & Bulk Operations (feature #3) — edit game/platform modals with pre-filled data
 - Search & Autocomplete (feature #2) — fast search with autocomplete suggestions
 - Smart Add Game (feature #4) — intelligent game addition workflow
-- Additional filters (acquisition method, remake/remaster status)
+- Additional filters (acquisition method, game type)
 
 **Medium-term** (sprints 4–6):
 - AI Enrichment (feature #5)

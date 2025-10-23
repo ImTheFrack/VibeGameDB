@@ -73,7 +73,8 @@ export function wireDomEvents() {
   });
 
   // Close when clicking outside
-  const modalList = [modalGame, modalPlatform, modalImport, modalAddToPlatform, modalFilter, modalOrphanHandler];
+  // NOTE: modalGame and modalPlatform are intentionally excluded to prevent accidental data loss.
+  const modalList = [modalImport, modalAddToPlatform, modalFilter, modalOrphanHandler];
   const modalDisplay = document.getElementById('modal-display');
   if (modalDisplay) modalList.push(modalDisplay);
   modalList.forEach(modal => {
@@ -352,8 +353,8 @@ export function wireDomEvents() {
       release_year: formData.get('release_year') ? parseInt(formData.get('release_year')) : null,
       cover_image_url: formData.get('cover_image_url'),
       trailer_url: formData.get('trailer_url'),
-      is_remake: gameType === 'remake',
-      is_remaster: gameType === 'remaster',
+      is_derived_work: gameType === 'derived',
+      is_sequel: gameType === 'sequel',
       related_game_id: gameType !== 'original' ? (formData.get('related_game_id') || null) : null,
       tags: tags
     };
@@ -606,9 +607,13 @@ export function wireDomEvents() {
       const platforms = Array.from(platformCheckboxes).map(cb => cb.value);
       const tagCheckboxes = document.querySelectorAll('#filter-tags input[type="checkbox"]:checked');
       const tags = Array.from(tagCheckboxes).map(cb => cb.value);
+      const typeCheckboxes = document.querySelectorAll('#filter-game-type input[type="checkbox"]:checked');
+      const gameTypes = Array.from(typeCheckboxes).map(cb => cb.value);
+      const acqCheckboxes = document.querySelectorAll('#filter-acquisition input[type="checkbox"]:checked');
+      const acquisitionMethods = Array.from(acqCheckboxes).map(cb => cb.value);
       const selMode = document.querySelector('input[name="platform_mode"]:checked');
       const platformAnd = selMode ? (selMode.value === 'and') : undefined;
-      state.currentFilters = { keyword, platforms, tags, platformAnd };
+      state.currentFilters = { keyword, platforms, tags, platformAnd, gameTypes, acquisitionMethods };
       applyFilters();
       closeModal(modalFilter, btnFilter);
       updateActiveFiltersDisplay();
@@ -623,7 +628,9 @@ export function wireDomEvents() {
       document.getElementById('filter-keyword').value = '';
       document.querySelectorAll('#filter-platforms input[type="checkbox"]').forEach(cb => cb.checked = false);
       document.querySelectorAll('#filter-tags input[type="checkbox"]').forEach(cb => cb.checked = false);
-      state.currentFilters = { keyword: '', platforms: [], tags: [] };
+      document.querySelectorAll('#filter-game-type input[type="checkbox"]').forEach(cb => cb.checked = false);
+      document.querySelectorAll('#filter-acquisition input[type="checkbox"]').forEach(cb => cb.checked = false);
+      state.currentFilters = { keyword: '', platforms: [], tags: [], gameTypes: [], acquisitionMethods: [] };
       applyFilters();
       updateActiveFiltersDisplay();
     });
@@ -705,7 +712,7 @@ export function wireDomEvents() {
       }
 
       // Clear all filters and apply just this one platform
-      state.currentFilters = { keyword: '', platforms: [platformId], tags: [] };
+      state.currentFilters = { keyword: '', platforms: [platformId], tags: [], gameTypes: [], acquisitionMethods: [] };
       applyFilters();
       updateActiveFiltersDisplay();
     }
