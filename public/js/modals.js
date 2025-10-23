@@ -466,8 +466,11 @@ export function renderAutocomplete(suggestions, container = null, footerText = n
     return;
   }
 
-  const exactMatches = suggestions.filter(s => s.match_type === 'exact');
-  const fuzzyMatches = suggestions.filter(s => s.match_type === 'fuzzy');
+  // Filter suggestions into groups. Use startsWith for flexibility.
+  // 'fts_exact_prefix' will be treated as an exact match.
+  // 'fts_word_fuzzy' and 'char_fuzzy' will be treated as fuzzy matches.
+  const exactMatches = suggestions.filter(s => s.match_type?.startsWith('fts_exact'));
+  const fuzzyMatches = suggestions.filter(s => s.match_type?.includes('fuzzy'));
 
   let html = '';
 
@@ -475,7 +478,9 @@ export function renderAutocomplete(suggestions, container = null, footerText = n
     return items.map(item => {
     let context = item.context || '';
     if (context.length > 80) context = context.substring(0, 80) + '...';
-    const fuzzyIndicator = item.match_type === 'fuzzy' ? '<span class="fuzzy-match-indicator" title="Fuzzy match">~</span>' : '';
+    // Show a fuzzy indicator for any non-exact match type
+    const isFuzzy = item.match_type && !item.match_type.startsWith('fts_exact');
+    const fuzzyIndicator = isFuzzy ? '<span class="fuzzy-match-indicator" title="Fuzzy match">~</span>' : '';
 
     return `
       <div class="autocomplete-item" data-type="${item.type}" data-id="${item.id}" data-name="${item.name}" data-match-type="${item.match_type || 'exact'}">

@@ -141,7 +141,7 @@ Links games to platforms and tracks how you obtained each copy and in what forma
    - Autocomplete as you type (name, description, tags, platform names)
    - Full-text search fallback
    - Dropdown suggestions with game/platform previews
-   - TODO: Add Fuzzy Logic
+   - Basic fuzzy Logic (OR basics).
 
 3. **Bulk Operations**
    - Bulk select and mass-edit (e.g., change acquisition method for multiple games)

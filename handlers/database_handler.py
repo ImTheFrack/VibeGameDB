@@ -26,6 +26,7 @@ import sqlite3
 import json
 import os
 import re
+import difflib
 
 try:
     import config
@@ -536,16 +537,27 @@ def _delete_game_platform(conn: sqlite3.Connection, gp_id: int):
 
 
 def _autocomplete(conn: sqlite3.Connection, qparams: Dict[str, List[str]], limit: int = 10):
-    """Perform a full-text search for autocomplete suggestions."""
+    """
+    Perform a multi-stage search for autocomplete suggestions.
+    
+    Strategy:
+    1. Exact/Prefix matches via FTS5 (fast, handles word-based matches)
+    2. Word-based fuzzy matches via FTS5 (handles typos in individual words)
+    3. Character-level fuzzy matches via difflib (handles typos like "Eldn" -> "Elden")
+    
+    This approach balances speed (FTS5 is fast) with accuracy (difflib handles typos).
+    """
+    print(f"\n--- _autocomplete called with query: '{qparams.get('q')}' ---")
     query = (qparams.get('q') or [''])[0].strip()
     if not query:
         return {'suggestions': []}
 
-    # --- 1. Exact and Prefix Matches ---
-    # "elden ri" -> "elden ri*" (prefix search)
-    # "elden ring" -> "elden ring*"
-    # This will find exact matches and items that start with the query.
+    normalized_query = _normalize_name(query)
+    query_words = normalized_query.split()
+    
+    # --- Stage 1: Exact and Prefix Matches ---
     exact_search_term = f'{query}*'
+    print(f"Stage 1: FTS5 exact/prefix search for '{exact_search_term}'")
     cur = conn.cursor()
     cur.execute("""
         SELECT row_id, item_type, name, context, rank
@@ -553,11 +565,13 @@ def _autocomplete(conn: sqlite3.Connection, qparams: Dict[str, List[str]], limit
         WHERE search_idx MATCH ?
         ORDER BY rank
         LIMIT ?
-    """, (exact_search_term, limit))
+    """, (exact_search_term, limit * 2))  # Get more to filter later
+    stage1_rows = cur.fetchall()
+    print(f"Stage 1: FTS5 query executed. Found {len(stage1_rows)} raw results (before filtering/dedup).")
 
     suggestions = []
     seen_ids = set()
-    for row in cur.fetchall():
+    for row in stage1_rows:
         suggestion_id = f"{row['item_type']}-{row['row_id']}"
         if suggestion_id in seen_ids:
             continue
@@ -567,20 +581,18 @@ def _autocomplete(conn: sqlite3.Connection, qparams: Dict[str, List[str]], limit
             'type': row['item_type'],
             'name': row['name'],
             'context': row['context'],
-            'match_type': 'exact'
+            'match_type': 'fts_exact_prefix',
+            'score': 1.0  # Exact matches get highest score
         })
+    print(f"Stage 1: Added {len(suggestions)} unique exact/prefix suggestions.")
 
-    # --- 2. Fuzzy Matches (if we still need more suggestions) ---
-    if len(suggestions) < limit:
-        # Use a standard FTS5 query with OR to find documents containing any of the search terms.
-        # The bm25 ranking algorithm will automatically rank documents containing more terms higher.
-        # We combine two strategies for better results:
-        # 1. An OR query for each word: 'Elden OR Rign'
-        # 2. A prefix query on the last word: 'Elden Rign*'
-        # This handles typos in earlier words while still giving good results for in-progress typing.
-        or_terms = ' OR '.join(query.split())
-        # The prefix term should not be in single quotes for FTS5 syntax.
-        # A search for "Elden Rign" becomes a query like: (Elden OR Rign) OR "Elden Rign*"
+    # --- Stage 2: Word-based Fuzzy Matches via FTS5 ---
+    # Only proceed if we have no good matches from Stage 1.
+    # If the query is short (e.g., < 3 chars), we should always try to find more results.
+    # If the query is longer and we found exact prefixes, we can stop early.
+    if len(suggestions) < limit : # and (len(suggestions) == 0 or len(query) < 3)
+        print(f"Stage 2: Not enough suggestions from Stage 1 ({len(suggestions)}/{limit}). Proceeding with FTS5 word-based fuzzy search.")
+        or_terms = ' OR '.join(query_words)
         fuzzy_term = f"({or_terms}) OR \"{query}*\""
         
         cur.execute("""
@@ -589,11 +601,11 @@ def _autocomplete(conn: sqlite3.Connection, qparams: Dict[str, List[str]], limit
             WHERE search_idx MATCH ?
             ORDER BY rank
             LIMIT ?
-        """, (fuzzy_term, limit))
+        """, (fuzzy_term, limit * 3))
+        stage2_rows = cur.fetchall()
+        print(f"Stage 2: FTS5 query executed for '{fuzzy_term}'. Found {len(stage2_rows)} raw results (before filtering/dedup).")
 
-        for row in cur.fetchall():
-            if len(suggestions) >= limit:
-                break
+        for row in stage2_rows:
             suggestion_id = f"{row['item_type']}-{row['row_id']}"
             if suggestion_id not in seen_ids:
                 seen_ids.add(suggestion_id)
@@ -602,10 +614,88 @@ def _autocomplete(conn: sqlite3.Connection, qparams: Dict[str, List[str]], limit
                     'type': row['item_type'],
                     'name': row['name'],
                     'context': row['context'],
-                    'match_type': 'fuzzy'
+                    'match_type': 'fts_word_fuzzy',
+                    'score': 0.8  # Word-based fuzzy is good but not exact
                 })
+        print(f"Stage 2: Total unique suggestions after Stage 2: {len(suggestions)}.")
 
-    return {'suggestions': suggestions}
+    # --- Stage 3: Character-level Fuzzy Matches ---
+    # Only compute expensive fuzzy matching if we still need more results
+    if len(suggestions) < limit : # and (len(suggestions) == 0 or len(query) < 3) 
+        print(f"Stage 3: Not enough suggestions from previous stages ({len(suggestions)}/{limit}). Proceeding with character-level fuzzy matching (difflib).")
+        # Fetch all games and platforms to do character-level fuzzy matching
+        cur.execute("""
+            SELECT row_id, item_type, name, context
+            FROM search_idx
+            WHERE item_type IN ('game', 'platform')
+        """)
+        
+        fuzzy_candidates = []
+        for row in cur.fetchall():
+            suggestion_id = f"{row['item_type']}-{row['row_id']}"
+            if suggestion_id in seen_ids:
+                continue
+            
+            # print(f"  Processing candidate: '{row['name']}' (type: {row['item_type']}, id: {row['row_id']})")
+            normalized_name = _normalize_name(row['name'])
+            target_words = normalized_name.split()
+            
+            # --- Calculate best score using different fuzzy strategies ---
+            # Strategy A: Character-level fuzzy match on the full name (handles "Eldenring" -> "Elden Ring")
+            # By removing spaces from both query and target, this handles cases where a user
+            # query like "eldenring" should match "Elden Ring". It also helps with short
+            # queries like "eldn" which would otherwise have a very low ratio against "elden ring".
+            query_compact = normalized_query.replace(' ', '')
+            target_compact = normalized_name.replace(' ', '')
+            # print(f"    Strategy A (char_score): query_compact='{query_compact}', target_compact='{target_compact}'")
+            char_score = _fuzzy_match_score(query_compact, target_compact, threshold=0.6)
+            # print(f"    Strategy A result: char_score={char_score}")
+            
+            # Strategy B: Word-level fuzzy match (handles "Eldn rign" -> "Elden Ring")
+            # print(f"    Strategy B (word_score): query_words={query_words}, normalized_name='{normalized_name}'")
+            word_score = _fuzzy_match_words(query_words, normalized_name, threshold=0.6)
+            # print(f"    Strategy B result: word_score={word_score}")
+            
+            # Strategy C (for single-word queries): Match against individual target words (handles "Eldn" -> "Elden" in "Elden Ring")
+            single_word_best_score = None
+            if len(query_words) == 1:
+                # print(f"    Strategy C (single_word_best_score): query_word='{query_words[0]}', target_words={target_words}")
+                scores = [_fuzzy_match_score(query_words[0], tword, threshold=0.6) for tword in target_words]
+                valid_scores = [s for s in scores if s is not None]
+                if valid_scores:
+                    single_word_best_score = max(valid_scores)
+                # print(f"    Strategy C result: single_word_best_score={single_word_best_score}")
+
+            # --- Use the highest score from all successful strategies ---
+            all_scores = [s for s in [char_score, word_score, single_word_best_score] if s is not None]
+            # print(f"    All valid scores for '{row['name']}': {all_scores}")
+            best_score = max(all_scores) if all_scores else None
+
+            if best_score is not None:
+                fuzzy_candidates.append({
+                    'id': row['row_id'],
+                    'type': row['item_type'],
+                    'name': row['name'],
+                    'context': row['context'],
+                    'match_type': 'char_fuzzy',
+                    'score': round(best_score, 2) # Round for cleaner debug output
+                })
+                # print(f"    Candidate '{row['name']}' added with score: {best_score}")
+            # else:
+                # print(f"    Candidate '{row['name']}' did not meet any fuzzy threshold.")
+      
+        
+        # Sort by score descending and add to suggestions
+        fuzzy_candidates.sort(key=lambda x: x['score'], reverse=True)
+        print(f"Stage 3: Sorted {len(fuzzy_candidates)} fuzzy candidates.")
+        for candidate in fuzzy_candidates:
+            if len(suggestions) >= limit:
+                break
+            suggestions.append(candidate)
+
+    # Trim to limit and return
+    print(f"--- _autocomplete returning {len(suggestions[:limit])} suggestions. ---")
+    return {'suggestions': suggestions[:limit]}
 
 def _normalize_name(name: str) -> str:
     """
@@ -623,12 +713,85 @@ def _normalize_name(name: str) -> str:
     return name
 
 
+def _fuzzy_match_score(query: str, target: str, threshold: float = 0.6) -> Optional[float]:
+    """
+    Compute a fuzzy match score using difflib.SequenceMatcher.ratio().
+
+    The ratio is a measure of the sequences' similarity, calculated as
+    2.0 * M / T, where T is the total number of elements in both sequences,
+    and M is the number of matches. This is effective for typos.
+
+    Returns a score between 0 and 1 if >= threshold, else None.
+    
+    Args:
+        query: The user's search term (normalized).
+        target: The game/platform name (normalized).
+        threshold: Minimum score to consider a match (0.0-1.0).
+    
+    Returns:
+        Match score (0-1) if >= threshold, else None.
+    """
+    # print(f"  _fuzzy_match_score: query='{query}', target='{target}', threshold={threshold}")
+    if not query or not target:
+        # print("  _fuzzy_match_score: Empty query or target, returning None.")
+        return None
+    
+    matcher = difflib.SequenceMatcher(None, query, target)
+    ratio = matcher.ratio()
+    # print(f"  _fuzzy_match_score: Calculated ratio={ratio:.2f}. Meets threshold ({threshold})? {ratio >= threshold}")
+    return ratio if ratio >= threshold else None
+
+
+def _fuzzy_match_words(query_words: List[str], target: str, threshold: float = 0.6) -> Optional[float]:
+    """
+    Try to match query words (with typos) against target words.
+    
+    For each query word, find the best match in target words.
+    Return average score if all query words match, else None.
+    
+    This handles cases like "Eldn rign" -> "Elden Ring" by matching
+    each word individually with fuzzy matching.
+    
+    Args:
+        query_words: List of normalized query words
+        target: The full target string (normalized)
+        threshold: Minimum score per word
+    
+    Returns:
+        Average match score if all words match, else None
+    """
+    # print(f"  _fuzzy_match_words: query_words={query_words}, target='{target}', threshold={threshold}")
+    if not query_words or not target:
+        # print("  _fuzzy_match_words: Empty query_words or target, returning None.")
+        return None
+    
+    target_words = target.split()
+    scores = []
+    
+    for qword in query_words:
+        # print(f"    _fuzzy_match_words: Matching query word '{qword}' against target words {target_words}")
+        best_score = None
+        for tword in target_words:
+            score = _fuzzy_match_score(qword, tword, threshold=0.5)  # Lower threshold for individual words
+            if score and (best_score is None or score > best_score):
+                best_score = score
+        # print(f"    _fuzzy_match_words: Best score for '{qword}': {best_score}")
+        
+        if best_score is None:
+            return None  # One query word didn't match any target word
+        scores.append(best_score)
+    
+    # Return average score of all matched words
+    return sum(scores) / len(scores) if scores else None
+
+
 def handle(req: Dict[str, Any]):
     """Main plugin entrypoint. Routes requests to the appropriate helpers.
 
     Returns either a `dict` (200 JSON) or a tuple `(status, body)`.
     """
     parsed = req
+    print(f"\n--- handle called. Method: {parsed.get('method')}, Subpath: {parsed.get('subpath')}, Query: {parsed.get('query')} ---")
     subpath = parsed.get('subpath', '') or ''
     sp = subpath.lstrip('/')
 
