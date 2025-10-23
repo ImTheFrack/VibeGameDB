@@ -1,7 +1,8 @@
 'use strict';
 import { state, clearAllFilters } from './state.js';
 import { normalizeName } from './utils.js';
-import { fetchPlatforms as fetchPlatformsFromApi, fetchGamePlatforms as fetchGamePlatformsFromApi } from './api.js';
+import { fetchPlatforms as fetchPlatformsFromApi, fetchGamePlatforms as fetchGamePlatformsFromApi, fetchAutocomplete } from './api.js';
+import { renderAutocomplete } from './render.js';
 
 /**
  * Modal helpers and population routines.
@@ -589,58 +590,6 @@ export function showEditPlatformModal(platformId, doOpen = true) {
   }
 }
 
-export function renderAutocomplete(suggestions, container = null, footerText = null) {
-  const resultsContainer = container || document.getElementById('autocomplete-results');
-  if (!suggestions || suggestions.length === 0) {
-    clearAutocomplete(resultsContainer);
-    return;
-  }
-
-  // Filter suggestions into groups. Use startsWith for flexibility.
-  // 'fts_exact_prefix' will be treated as an exact match.
-  // 'fts_word_fuzzy' and 'char_fuzzy' will be treated as fuzzy matches.
-  const exactMatches = suggestions.filter(s => s.match_type?.startsWith('fts_exact'));
-  const fuzzyMatches = suggestions.filter(s => s.match_type?.includes('fuzzy'));
-
-  let html = '';
-
-  const renderItems = (items) => {
-    return items.map(item => {
-    let context = item.context || '';
-    if (context.length > 80) context = context.substring(0, 80) + '...';
-    // Show a fuzzy indicator for any non-exact match type
-    const isFuzzy = item.match_type && !item.match_type.startsWith('fts_exact');
-    const fuzzyIndicator = isFuzzy ? '<span class="fuzzy-match-indicator" title="Fuzzy match">~</span>' : '';
-
-    return `
-      <div class="autocomplete-item" data-type="${item.type}" data-id="${item.id}" data-name="${item.name}" data-match-type="${item.match_type || 'exact'}">
-        <div class="item-type-icon"></div>
-        <div class="item-text">
-          <div class="item-name">${item.name} ${fuzzyIndicator}</div>
-          <div class="item-context">${context}</div>
-        </div>
-      </div>
-    `;
-    }).join('');
-  };
-
-  if (exactMatches.length > 0) {
-    html += '<div class="autocomplete-group-header">Exact Matches</div>';
-    html += renderItems(exactMatches);
-  }
-
-  if (fuzzyMatches.length > 0) {
-    html += `<div class="autocomplete-group-header">Fuzzy Matches</div>`;
-    html += renderItems(fuzzyMatches);
-  }
-
-  resultsContainer.innerHTML = html;
-
-  const defaultFooter = `↑↓ to navigate, ↩ to select, ⇥ to complete`;
-  resultsContainer.innerHTML += `<div class="autocomplete-footer">${footerText || defaultFooter}</div>`;
-  resultsContainer.style.display = 'block';
-}
-
 export function clearAutocomplete(container = null) {
   const targetContainer = container || document.getElementById('autocomplete-results');
   if (targetContainer) {
@@ -649,6 +598,111 @@ export function clearAutocomplete(container = null) {
   }
 }
 
+/**
+ * Initializes autocomplete functionality for a given input element.
+ * @param {HTMLInputElement} inputEl - The input element to attach listeners to.
+ * @param {HTMLElement} resultsContainer - The element to render results into.
+ * @param {object} options - Configuration options.
+ * @param {function(HTMLElement):void} options.onSelect - Callback when an item is selected.
+ * @param {function(string):void} [options.onEnterWithoutSelection] - Callback for Enter key when no item is selected.
+ * @param {function(object):boolean} [options.filter] - Function to filter suggestions.
+ * @param {string} [options.footerText] - Custom text for the autocomplete footer.
+ */
+export function initAutocomplete(inputEl, resultsContainer, options) {
+  if (!inputEl || !resultsContainer) return;
+
+  let timer = null;
+  let selectedIndex = -1;
+
+  inputEl.addEventListener('input', (e) => {
+    clearTimeout(timer);
+    const query = e.target.value.trim();
+
+    if (query.length < 2) {
+      clearAutocomplete(resultsContainer);
+      return;
+    }
+
+    timer = setTimeout(async () => {
+      const data = await fetchAutocomplete(query);
+      if (data && data.suggestions) {
+        const suggestions = options.filter ? data.suggestions.filter(options.filter) : data.suggestions;
+        renderAutocomplete(suggestions, resultsContainer, options.footerText);
+        selectedIndex = -1; // Reset selection on new results
+      }
+    }, 300);
+  });
+
+  // Hide autocomplete when clicking outside its container
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest(resultsContainer.parentElement.id ? `#${resultsContainer.parentElement.id}` : '.search-container')) {
+      clearAutocomplete(resultsContainer);
+    }
+  });
+
+  // Handle item clicks
+  resultsContainer.addEventListener('click', (e) => {
+    const item = e.target.closest('.autocomplete-item');
+    if (item) options.onSelect(item);
+  });
+
+  // Keyboard navigation
+  inputEl.addEventListener('keydown', (e) => {
+    const items = resultsContainer.querySelectorAll('.autocomplete-item');
+    if (items.length === 0) {
+      if (e.key === 'Enter' && options.onEnterWithoutSelection) {
+        e.preventDefault();
+        const query = inputEl.value.trim();
+        if (query) options.onEnterWithoutSelection(query);
+      }
+      return;
+    }
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        selectedIndex = (selectedIndex + 1) % items.length;
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        selectedIndex = (selectedIndex - 1 + items.length) % items.length;
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (selectedIndex > -1) {
+          options.onSelect(items[selectedIndex]);
+        } else if (options.onEnterWithoutSelection) {
+          const query = inputEl.value.trim();
+          if (query) options.onEnterWithoutSelection(query);
+        }
+        return;
+      case 'Tab':
+        if (items.length > 0) {
+          const targetIndex = selectedIndex > -1 ? selectedIndex : 0;
+          const targetItem = items[targetIndex];
+          if (targetItem) {
+            const completeName = targetItem.dataset.name;
+            if (inputEl.value.toLowerCase() !== completeName.toLowerCase()) {
+              e.preventDefault();
+              inputEl.value = completeName;
+              if (selectedIndex === -1) {
+                selectedIndex = 0;
+                items.forEach((item, index) => item.classList.toggle('selected', index === 0));
+              }
+            }
+          }
+        }
+        break;
+      case 'Escape':
+        clearAutocomplete(resultsContainer);
+        break;
+    }
+
+    items.forEach((item, index) => {
+      item.classList.toggle('selected', index === selectedIndex);
+    });
+  });
+}
 
 // --- CSV import modal helpers ---
 import { postCsvPreview, postCsvImport, igdbSearch, fetchSchema } from './api.js';

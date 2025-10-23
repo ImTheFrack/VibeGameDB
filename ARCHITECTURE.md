@@ -29,6 +29,7 @@
 │  │  - filters.js: extractAllTags/applyFilters/UI counts      │   │
 │  │  - modals.js: modal helpers, filter/add-to-platform UI    │   │
 │  │  - events.js: DOM wiring, form submit handlers, tabs      │   │
+│  │  - utils.js: shared helpers (e.g., escaping, normalization) │   │
 │  │                                                           │   │
 │  │  Form Handlers (via events.js):                           │   │
 │  │  - formGame.addEventListener('submit', ...)               │   │
@@ -78,22 +79,22 @@
                                │
                                ▼
         ┌──────────────────────────────────────────────┐
-        │    handlers/database_handler.py              │
+        │    handlers/*.py (Plugin Modules)            │
         │                                              │
-        │  handle(req) function routes to:             │
-        │  - Games: _list, _create, _update, _delete   │
-        │  - Platforms: _list, _create, _update, _del  │
-        │  - Game-Platforms: _list, _create, _update,  │
-        │    _delete                                   │
+        │  handle(req) function routes to sub-handlers:│
+        │  - database_handler: CRUD for all data models│
+        │  - import_handler: CSV import/export logic   │
+        │  - ai_handler: AI-based data enrichment      │
+        │  - seed_handler: Initial database seeding    │
         └──────────────────────────────────────────────┘
                                │
                                ▼
         ┌───────────────────────────────────────────────┐
         │         SQLite Database                       │
-        │         (data/gamedb.sqlite)                  │
+        │      (path from config.DATABASE_FILE)         │
         │                                               │
         │  Tables:                                      │
-        │  - games (id, name, tags, is_serivedwork, ...)│
+        │  - games (id, name, tags, is_remake, ...)     │
         │  - platforms (id, name, supports_digital,     │
         │    supports_physical, ...)                    │
         │  - game_platforms (id, game_id, platform_id,  │
@@ -247,6 +248,70 @@ fetchGames()  ← Refreshes game list with new platform link
 renderGames(data) updates display grid
     ↓
 User sees game card now shows the new platform with format indicator
+```
+
+### Bulk Editing Workflow
+
+The application supports bulk operations on games, allowing users to edit, delete, or manage platform associations for multiple items at once.
+
+```
+User clicks "Select Multiple"
+    ↓
+state.selection.enabled = true
+renderBulkActionsBar() shows the bar
+applyFilters() re-renders grid with checkboxes
+    ↓
+User checks boxes on several game cards
+    ↓
+cardCheckbox.addEventListener('change', ...)
+    - Adds game ID to state.selection.selectedGameIds
+    - Adds .selected-card class to card
+    - renderBulkActionsBar() updates selected count
+    ↓
+User clicks "Edit" on the bulk actions bar
+    ↓
+bulkActionBar.addEventListener('click', ...)
+    - Opens #modal-bulk-edit
+    ↓
+User chooses a bulk action from the modal (e.g., "Assign to Platform")
+    ↓
+bulkActionsContainer.addEventListener('click', ...)
+    - Constructs payload: { action, item_type, ids, params }
+    - postBulkOperation(payload) → POST /plugins/database_handler/bulk
+    ↓
+Backend receives POST request
+    ↓
+database_handler.handle(req) routes to _bulk_operations()
+    ↓
+_bulk_operations() iterates through IDs and performs the action
+(e.g., INSERT into game_platforms for each game ID)
+    ↓
+Returns { message: "Successfully processed X of Y items." }
+    ↓
+Frontend receives response, closes modal, and refreshes data
+```
+
+#### Bulk Field Editing
+
+Editing specific fields (like tags or release year) is a special two-step bulk action:
+
+1.  From the main bulk actions modal, the user clicks **"Edit Game Fields"**.
+2.  The app calls `showBulkEditGameModal()`, which re-purposes the standard game form (`#modal-game`) for bulk editing.
+    - Checkboxes appear next to each field.
+    - A field is only included in the update if its corresponding checkbox is ticked.
+    - On submit, the frontend sends an `edit_fields` action to the `/plugins/database_handler/bulk` endpoint.
+
+**Request (Bulk Edit Fields):**
+```json
+{
+  "action": "edit_fields",
+  "item_type": "game",
+  "ids": [1, 5, 12],
+  "params": {
+    "tags": ["updated-tag", "bulk-edited"],
+    "release_year": 2024
+  }
+}
 ```
 
 ## Request/Response Examples

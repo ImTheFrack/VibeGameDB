@@ -216,3 +216,60 @@ export function renderPagination() {
   topContainer.appendChild(buildPagination());
   bottomContainer.appendChild(buildPagination());
 }
+
+export function renderAutocomplete(suggestions, container = null, footerText = null) {
+  const resultsContainer = container || document.getElementById('autocomplete-results');
+  if (!suggestions || suggestions.length === 0) {
+    clearAutocomplete(resultsContainer);
+    return;
+  }
+
+  // Filter suggestions into groups. Use startsWith for flexibility.
+  // 'fts_exact_prefix' will be treated as an exact match.
+  // 'fts_word_fuzzy' and 'char_fuzzy' will be treated as fuzzy matches.
+  const exactMatches = suggestions.filter(s => s.match_type?.startsWith('fts_exact'));
+  const fuzzyMatches = suggestions.filter(s => s.match_type?.includes('fuzzy'));
+
+  let html = '';
+
+  const renderItems = (items) => {
+    return items.map(item => {
+    let context = item.context || '';
+    if (context.length > 80) context = context.substring(0, 80) + '...';
+    // Show a fuzzy indicator for any non-exact match type
+    const isFuzzy = item.match_type && !item.match_type.startsWith('fts_exact');
+    const fuzzyIndicator = isFuzzy ? '<span class="fuzzy-match-indicator" title="Fuzzy match">~</span>' : '';
+
+    return `
+      <div class="autocomplete-item" data-type="${item.type}" data-id="${item.id}" data-name="${item.name}" data-match-type="${item.match_type || 'exact'}">
+        <div class="item-type-icon"></div>
+        <div class="item-text">
+          <div class="item-name">${item.name} ${fuzzyIndicator}</div>
+          <div class="item-context">${context}</div>
+        </div>
+      </div>
+    `;
+    }).join('');
+  };
+
+  if (exactMatches.length > 0) {
+    html += '<div class="autocomplete-group-header">Exact Matches</div>';
+    html += renderItems(exactMatches);
+  }
+
+  if (fuzzyMatches.length > 0) {
+    html += `<div class="autocomplete-group-header">Fuzzy Matches</div>`;
+    html += renderItems(fuzzyMatches);
+  }
+
+  resultsContainer.innerHTML = html;
+
+  const defaultFooter = `↑↓ to navigate, ↩ to select, ⇥ to complete`;
+  resultsContainer.innerHTML += `<div class="autocomplete-footer">${footerText || defaultFooter}</div>`;
+  resultsContainer.style.display = 'block';
+}
+
+function clearAutocomplete(container) {
+  container.innerHTML = '';
+  container.style.display = 'none';
+}

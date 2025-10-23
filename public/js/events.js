@@ -1,9 +1,9 @@
 'use strict';
 import { state, clearAllFilters } from './state.js';
 import { fetchGames as fetchGamesFromApi, fetchPlatforms as fetchPlatformsFromApi, fetchAutocomplete, postBulkOperation } from './api.js';
-import { renderGames, renderPlatforms, renderBulkActionsBar } from './render.js';
+import { renderGames, renderPlatforms, renderBulkActionsBar, renderAutocomplete } from './render.js';
 import { applyFilters, extractAllTags, updateActiveFiltersDisplay, updateTabCounts } from './filters.js'; 
-import { openModal, closeModal, populateFilterModal, populateAddToPlatformForm, showEditGameModal, showBulkEditGameModal, showEditPlatformModal, populateGamePlatformsList, renderAutocomplete, clearAutocomplete } from './modals.js';
+import { openModal, closeModal, populateFilterModal, populateAddToPlatformForm, showEditGameModal, showBulkEditGameModal, showEditPlatformModal, populateGamePlatformsList, clearAutocomplete, initAutocomplete } from './modals.js';
 import { initImportModal } from './modals.js';
 import { normalizeName } from './utils.js';
 
@@ -146,51 +146,18 @@ export function wireDomEvents() {
     }
   });
 
-
-
-
   // --- Smart Add Game: Autocomplete in Modal ---
   const addGameNameInput = formGame.querySelector('input[name="name"]');
   const addGameAutocompleteResults = document.getElementById('add-game-autocomplete-results');
-  if (addGameNameInput && addGameAutocompleteResults) {
-    let modalAutocompleteTimer = null;
-
-    addGameNameInput.addEventListener('input', (e) => {
-      clearTimeout(modalAutocompleteTimer);
-      const query = e.target.value.trim();
-
-      if (query.length < 2) {
-        clearAutocomplete(addGameAutocompleteResults);
-        return;
-      }
-
-      modalAutocompleteTimer = setTimeout(async () => {
-        const data = await fetchAutocomplete(query);
-        if (data && data.suggestions) {
-          // Filter out non-game results for this context
-          const gameSuggestions = data.suggestions.filter(s => s.type === 'game');
-          renderAutocomplete(gameSuggestions, addGameAutocompleteResults, 'Found existing game:');
-        }
-      }, 300);
-    });
-
-    addGameAutocompleteResults.addEventListener('click', (e) => {
-      const item = e.target.closest('.autocomplete-item');
-      if (item) {
-        const gameId = item.dataset.id;
-        // Pre-fill the form with the selected game's data, turning "Add" into "Edit"
-        showEditGameModal(gameId, false); // false = don't re-open modal
-        clearAutocomplete(addGameAutocompleteResults);
-      }
-    });
-
-    // Hide autocomplete when clicking elsewhere in the modal
-    modalGame.addEventListener('click', (e) => {
-      if (!e.target.closest('#add-game-autocomplete-results') && e.target !== addGameNameInput) {
-        clearAutocomplete(addGameAutocompleteResults);
-      }
-    });
-  }
+  initAutocomplete(addGameNameInput, addGameAutocompleteResults, {
+    onSelect: (item) => {
+      const gameId = item.dataset.id;
+      showEditGameModal(gameId, false); // false = don't re-open modal
+      clearAutocomplete(addGameAutocompleteResults);
+    },
+    filter: (suggestion) => suggestion.type === 'game',
+    footerText: 'Found existing game:'
+  });
 
   // Game type radios
   const gameTypeRadios = document.querySelectorAll('input[name="game_type"]');
@@ -423,6 +390,21 @@ export function wireDomEvents() {
     }
   });
 
+  /**
+   * Handles the UI flow after a new game is successfully created.
+   * Transitions the 'Add Game' modal to an 'Edit Game' state for the new game,
+   * then opens the 'Add to Platform' modal.
+   * @param {number} newGameId - The ID of the newly created game.
+   */
+  async function handleNewGameCreationSuccess(newGameId) {
+    await fetchGames(); // Refresh state to include the new game
+    // Transition the "Add" modal to an "Edit" modal for the new game
+    await showEditGameModal(newGameId, false); // false = don't open, just populate
+    // Now, open the "Add to Platform" modal on top
+    state.currentGameId = newGameId;
+    await populateAddToPlatformForm();
+    openModal(document.getElementById('modal-add-to-platform'));
+  }
   // Submit: Game
   formGame.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -521,15 +503,8 @@ export function wireDomEvents() {
       const result = await res.json();
       // After saving, refresh data and close modal.
       // The new workflow handles platform association within the modal.
-      if (!gameId && result.game) { // This was a new game, transition to edit and prompt for platform
-        const newGameId = result.game.id;
-        await fetchGames(); // Refresh state to include the new game, which populates state.allGames
-        // Transition the "Add" modal to an "Edit" modal for the new game
-        await showEditGameModal(newGameId, false); // false = don't open, just populate
-        // Now, open the "Add to Platform" modal on top
-        state.currentGameId = newGameId;
-        await populateAddToPlatformForm();
-        openModal(modalAddToPlatform);
+      if (!gameId && result.game) { // This was a new game
+        await handleNewGameCreationSuccess(result.game.id);
       } else {
         closeModal(modalGame, document.querySelector(`.edit-game[data-id="${gameId}"]`) || document.getElementById('btn-add-game'));
         await fetchPlatforms();
@@ -713,133 +688,27 @@ export function wireDomEvents() {
 
   // Header search
   if (headerSearch) {
-    let headerTimer = null;
-    let selectedIndex = -1; // -1 means no selection
-
-    const handleSelection = (item) => {
-      if (!item) return;
-      const { type, id, name } = item.dataset;
-
-      if (type === 'game') {
-        showEditGameModal(id);
-      } else if (type === 'platform') {
-        showEditPlatformModal(id);
-      } else if (type === 'tag') {
+    initAutocomplete(headerSearch, autocompleteResults, {
+      onSelect: (item) => {
+        const { type, id, name } = item.dataset;
+        if (type === 'game') showEditGameModal(id);
+        else if (type === 'platform') showEditPlatformModal(id);
+        else if (type === 'tag') {
+          clearAllFilters();
+          state.currentFilters.tags = [name];
+          applyFilters();
+          updateActiveFiltersDisplay();
+        }
+        headerSearch.value = name;
+        clearAutocomplete();
+      },
+      onEnterWithoutSelection: (query) => {
         clearAllFilters();
-        state.currentFilters.tags = [name];
+        state.currentFilters.keyword = query;
         applyFilters();
         updateActiveFiltersDisplay();
-      }
-      headerSearch.value = name;
-      clearAutocomplete();
-    };
-
-    headerSearch.addEventListener('input', (e) => {
-      clearTimeout(headerTimer);
-      const query = e.target.value.trim();
-
-      if (query.length < 2) {
-        clearAutocomplete();
-        return;
-      }
-
-      headerTimer = setTimeout(async () => {
-        const data = await fetchAutocomplete(query);
-        if (data) {
-          renderAutocomplete(data.suggestions);
-          selectedIndex = -1; // Reset selection on new results
-        }
-      }, 250);
-    });
-
-    // Hide autocomplete when clicking outside
-    document.addEventListener('click', (e) => {
-      if (!e.target.closest('#search-container')) {
         clearAutocomplete();
       }
-    });
-
-    // Handle autocomplete item clicks
-    autocompleteResults.addEventListener('click', (e) => {
-      const item = e.target.closest('.autocomplete-item');
-      handleSelection(item);
-    });
-
-    // Keyboard navigation for autocomplete
-    headerSearch.addEventListener('keydown', (e) => {
-      const items = autocompleteResults.querySelectorAll('.autocomplete-item');
-      if (items.length === 0) {
-        // Fallback to keyword search on Enter if no suggestions
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          const query = headerSearch.value.trim();
-          if (query) {
-            clearAllFilters();
-            state.currentFilters.keyword = query;
-            clearAutocomplete();
-            applyFilters();
-            updateActiveFiltersDisplay();
-          }
-        }
-        return;
-      }
-
-      switch (e.key) {
-        case 'ArrowDown':
-          e.preventDefault();
-          selectedIndex = (selectedIndex + 1) % items.length;
-          break;
-        case 'ArrowUp':
-          e.preventDefault();
-          selectedIndex = (selectedIndex - 1 + items.length) % items.length;
-          break;
-        case 'Enter':
-          e.preventDefault();
-          if (selectedIndex > -1) {
-            // If an item is selected via arrow keys, handle that selection.
-            handleSelection(items[selectedIndex]);
-          } else {
-            // Otherwise, perform a keyword search for the exact text in the input box.
-            const query = headerSearch.value.trim();
-            if (query) {
-              clearAllFilters();
-              state.currentFilters.keyword = query;
-              clearAutocomplete();
-              applyFilters();
-              updateActiveFiltersDisplay();
-            }
-          }
-          return; // Stop further processing
-        case 'Tab':
-          // If autocomplete is open, Tab should try to complete
-          if (items.length > 0) {
-            // If an item is selected via arrows, use it. Otherwise, default to the first item.
-            const targetIndex = selectedIndex > -1 ? selectedIndex : 0;
-            const targetItem = items[targetIndex];
-
-            if (targetItem) {
-              const completeName = targetItem.dataset.name;
-              // Only prevent default and autocomplete if the input text is not already the full name
-              if (headerSearch.value.toLowerCase() !== completeName.toLowerCase()) {
-                e.preventDefault();
-                headerSearch.value = completeName;
-                // Visually select the first item if we just autocompleted to it
-                if (selectedIndex === -1) {
-                  selectedIndex = 0;
-                  items.forEach((item, index) => item.classList.toggle('selected', index === 0));
-                }
-              }
-            }
-          }
-          break;
-        case 'Escape':
-          clearAutocomplete();
-          break;
-      }
-
-      items.forEach((item, index) => {
-        item.classList.toggle('selected', index === selectedIndex);
-      });
     });
   }
 
