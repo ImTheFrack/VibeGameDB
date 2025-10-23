@@ -1,7 +1,7 @@
 'use strict';
 import { state } from './state.js';
-import { fetchGames as fetchGamesFromApi, fetchPlatforms as fetchPlatformsFromApi, fetchGamePlatforms as fetchGamePlatformsFromApi } from './api.js';
-import { renderPlatforms } from './render.js';
+import { fetchGames as fetchGamesFromApi, fetchPlatforms as fetchPlatformsFromApi } from './api.js';
+import { renderGames, renderPlatforms } from './render.js';
 import { applyFilters, extractAllTags, updateActiveFiltersDisplay, updateTabCounts } from './filters.js';
 import { openModal, closeModal, populateFilterModal, populateAddToPlatformForm, showEditGameModal, populateGamePlatformsList } from './modals.js';
 import { initImportModal } from './modals.js';
@@ -26,13 +26,6 @@ async function fetchGames() {
     extractAllTags();
     applyFilters();
     updateActiveFiltersDisplay();
-  }
-}
-
-async function fetchGamePlatforms() {
-  const data = await fetchGamePlatformsFromApi();
-  if (data) {
-    state.allGamePlatforms = data.game_platforms || [];
   }
 }
 
@@ -63,6 +56,8 @@ export function wireDomEvents() {
   const formFilter = document.getElementById('form-filter');
   const btnFilter = document.getElementById('btn-filter');
   const gamesControls = document.getElementById('games-controls');
+  const sortSelect = document.getElementById('sort-select');
+  const itemsPerPageSelect = document.getElementById('items-per-page-select');
   const headerSearch = document.getElementById('search-input');
 
   const platformFiltersContainer = document.querySelector('.platform-filters')
@@ -73,7 +68,7 @@ export function wireDomEvents() {
   document.querySelectorAll('[data-close]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       const modal = e.target.closest('.modal');
-      if (modal) closeModal(modal);
+      if (modal) closeModal(modal, e.target.closest('[data-opens-modal]') || document.querySelector(`[data-opens-modal="${modal.id}"]`));
     });
   });
 
@@ -83,7 +78,7 @@ export function wireDomEvents() {
   if (modalDisplay) modalList.push(modalDisplay);
   modalList.forEach(modal => {
     modal.addEventListener('click', (e) => {
-      if (e.target === modal) closeModal(modal);
+      if (e.target === modal) closeModal(modal, document.querySelector(`[data-opens-modal="${modal.id}"]`));
     });
   });
 
@@ -178,7 +173,7 @@ export function wireDomEvents() {
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || 'Server responded with an error.');
 
-          closeModal(modalGame);
+          closeModal(modalGame, document.getElementById('btn-add-game')); // Or the card that opened it
           await fetchGames(); // Refresh game list
 
           // Check if any platforms became empty and offer to delete them
@@ -249,7 +244,7 @@ export function wireDomEvents() {
             throw new Error(data.error || 'Server responded with an error.');
           }
 
-          closeModal(modalPlatform);
+          closeModal(modalPlatform, document.getElementById('btn-add-platform')); // Or the card that opened it
           await fetchPlatforms(); // Refresh platform list and game list (as links are removed)
           await fetchGames();
         } catch (err) {
@@ -329,7 +324,7 @@ export function wireDomEvents() {
 
       // Success: close modals and refresh data
       closeModal(modalOrphanHandler);
-      closeModal(document.getElementById('modal-platform'));
+      closeModal(document.getElementById('modal-platform'), document.getElementById('btn-add-platform'));
       await fetchPlatforms();
       await fetchGames();
 
@@ -354,6 +349,7 @@ export function wireDomEvents() {
     const gameData = {
       name: formData.get('name'),
       description: formData.get('description'),
+      release_year: formData.get('release_year') ? parseInt(formData.get('release_year')) : null,
       cover_image_url: formData.get('cover_image_url'),
       trailer_url: formData.get('trailer_url'),
       is_remake: gameType === 'remake',
@@ -390,7 +386,7 @@ export function wireDomEvents() {
         await populateAddToPlatformForm();
         openModal(modalAddToPlatform);
       } else {
-        closeModal(modalGame);
+        closeModal(modalGame, document.querySelector(`.edit-game[data-id="${gameId}"]`) || document.getElementById('btn-add-game'));
         await fetchPlatforms();
         if (state.currentTab === 'games') fetchGames();
       }
@@ -434,7 +430,7 @@ export function wireDomEvents() {
         alert(`Error: ${err.error || 'Failed to save platform'}`);
         return;
       }
-      closeModal(modalPlatform);
+      closeModal(modalPlatform, document.querySelector(`.edit-platform[data-id="${platformId}"]`) || document.getElementById('btn-add-platform'));
       await fetchPlatforms();
       if (state.currentTab === 'platforms') fetchPlatforms();
     } catch (err) {
@@ -488,7 +484,7 @@ export function wireDomEvents() {
         alert(`Error: ${errors[0]}`);
         return;
       }
-      closeModal(modalAddToPlatform);
+      closeModal(modalAddToPlatform, document.querySelector(`.add-to-platform[data-id="${state.currentGameId}"]`) || document.getElementById('btn-associate-platform'));
 
       // Refresh the platform list in the underlying game modal
       const gameId = formGame.dataset.gameId;
@@ -517,6 +513,7 @@ export function wireDomEvents() {
   // Filter button
   if (btnFilter) {
     btnFilter.addEventListener('click', async () => {
+      btnFilter.setAttribute('data-opens-modal', 'modal-filter');
       await populateFilterModal();
       openModal(modalFilter);
       const kw = document.getElementById('filter-keyword');
@@ -545,6 +542,7 @@ export function wireDomEvents() {
   }
   if (btnDisplay && modalDisplayEl && formDisplay) {
     btnDisplay.addEventListener('click', () => {
+      btnDisplay.setAttribute('data-opens-modal', 'modal-display');
       formDisplay.querySelectorAll('input[type="checkbox"]').forEach(cb => {
         const name = cb.name;
         cb.checked = !!state.displayOptions[name];
@@ -560,7 +558,7 @@ export function wireDomEvents() {
       state.displayOptions.show_description = !!formData.get('show_description');
       state.displayOptions.show_tags = !!formData.get('show_tags');
       state.displayOptions.show_platforms = !!formData.get('show_platforms');
-      closeModal(modalDisplayEl);
+      closeModal(modalDisplayEl, btnDisplay);
       applyFilters();
       updateDisplayButton();
     });
@@ -612,7 +610,7 @@ export function wireDomEvents() {
       const platformAnd = selMode ? (selMode.value === 'and') : undefined;
       state.currentFilters = { keyword, platforms, tags, platformAnd };
       applyFilters();
-      closeModal(modalFilter);
+      closeModal(modalFilter, btnFilter);
       updateActiveFiltersDisplay();
     });
   }
@@ -638,6 +636,7 @@ export function wireDomEvents() {
     const addToPlat = e.target.closest('.add-to-platform');
     const platSpan = e.target.closest('.plat');
     const tagSpan = e.target.closest('.tag');
+    const filterByPlatform = e.target.closest('.filter-by-platform');
 
     if (editGame) {
       showEditGameModal(editGame.getAttribute('data-id'));
@@ -652,6 +651,7 @@ export function wireDomEvents() {
       }
       formPlatform.reset();
       formPlatform.dataset.platformId = platformId;
+      formPlatform.querySelector('button[type="submit"]').textContent = 'Save';
       document.getElementById('modal-platform-title').textContent = 'Edit Platform';
       formPlatform.querySelector('input[name="name"]').value = platform.name || '';
       formPlatform.querySelector('textarea[name="description"]').value = platform.description || '';
@@ -693,6 +693,22 @@ export function wireDomEvents() {
       updateActiveFiltersDisplay();
       return;
     }
+    if (filterByPlatform) {
+      e.preventDefault();
+      const platformId = filterByPlatform.dataset.platformId;
+      if (!platformId) return;
+
+      // Switch to the games tab, which will also fetch the games
+      const gamesTab = document.querySelector('.tab[data-tab="games"]');
+      if (gamesTab && state.currentTab !== 'games') {
+        gamesTab.click(); // This will handle fetching and rendering
+      }
+
+      // Clear all filters and apply just this one platform
+      state.currentFilters = { keyword: '', platforms: [platformId], tags: [] };
+      applyFilters();
+      updateActiveFiltersDisplay();
+    }
   });
 
   // Platform header helper button (legacy support)
@@ -706,6 +722,40 @@ export function wireDomEvents() {
       updateActiveFiltersDisplay();
     });
   }
+
+  // Sorting
+  if (sortSelect) {
+    sortSelect.addEventListener('change', () => {
+      state.pagination.currentPage = 1; // Reset to first page on sort change
+      applyFilters();
+    });
+  }
+
+  // Items per page
+  if (itemsPerPageSelect) {
+    itemsPerPageSelect.addEventListener('change', () => {
+      state.pagination.pageSize = parseInt(itemsPerPageSelect.value, 10);
+      state.pagination.currentPage = 1; // Reset to first page
+      applyFilters();
+    });
+  }
+
+  // --- Pagination via Event Delegation ---
+  function handlePaginationClick(e) {
+    e.preventDefault();
+    const link = e.target.closest('.page-link');
+    if (!link || link.classList.contains('disabled') || link.classList.contains('current')) {
+      return;
+    }
+    state.pagination.currentPage = parseInt(link.dataset.page, 10);
+    applyFilters();
+  }
+
+  const paginationTop = document.getElementById('pagination-top');
+  const paginationBottom = document.getElementById('pagination-bottom');
+  if (paginationTop) paginationTop.addEventListener('click', handlePaginationClick);
+  if (paginationBottom) paginationBottom.addEventListener('click', handlePaginationClick);
+
 
   // --- In-Modal Platform Management ---
 

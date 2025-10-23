@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS games (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     description TEXT,
+    release_year INTEGER,
     cover_image_url TEXT,
     trailer_url TEXT,
     is_remake BOOLEAN DEFAULT 0,
@@ -122,6 +123,7 @@ def _game_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
         'id': row['id'],
         'name': row['name'],
         'description': row['description'],
+        'release_year': row['release_year'],
         'cover_image_url': row['cover_image_url'],
         'trailer_url': row['trailer_url'],
         'is_remake': bool(row['is_remake']),
@@ -178,11 +180,11 @@ def _list_games(conn: sqlite3.Connection, qparams: Dict[str, List[str]]):
         game_platforms = [_game_platform_row_to_dict(r) for r in gp_rows]
         return {'game': game, 'game_platforms': game_platforms}
 
-    cur.execute('SELECT * FROM games ORDER BY name COLLATE NOCASE')
+    cur.execute('SELECT * FROM games ORDER BY release_year DESC, name COLLATE NOCASE')
     rows = cur.fetchall()
     games = [_game_row_to_dict(r) for r in rows]
     # Include all game_platforms in the response so frontend can perform filtering without extra round-trips
-    cur.execute('SELECT * FROM game_platforms ORDER BY game_id, platform_id')
+    cur.execute('SELECT * FROM game_platforms ORDER BY created_at, game_id, platform_id')
     gp_rows = cur.fetchall()
     game_platforms = [_game_platform_row_to_dict(r) for r in gp_rows]
     return {'games': games, 'game_platforms': game_platforms}
@@ -194,6 +196,7 @@ def _create_game(conn: sqlite3.Connection, data: Dict[str, Any]):
     if not name:
         return (400, {'error': 'name is required'})
     description = data.get('description')
+    release_year = data.get('release_year')
     cover = data.get('cover_image_url')
     trailer = data.get('trailer_url')
     is_remake = bool(data.get('is_remake', False))
@@ -205,9 +208,9 @@ def _create_game(conn: sqlite3.Connection, data: Dict[str, Any]):
     
     cur = conn.cursor()
     cur.execute(
-        'INSERT INTO games (name, description, cover_image_url, trailer_url, is_remake, is_remaster, related_game_id, tags) '
-        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        (name, description, cover, trailer, is_remake, is_remaster, related_game_id, json.dumps(tags))
+        'INSERT INTO games (name, description, release_year, cover_image_url, trailer_url, is_remake, is_remaster, related_game_id, tags) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        (name, description, release_year, cover, trailer, is_remake, is_remaster, related_game_id, json.dumps(tags))
     )
     conn.commit()
     gid = cur.lastrowid
@@ -224,7 +227,7 @@ def _update_game(conn: sqlite3.Connection, gid: int, data: Dict[str, Any]):
     # Build update
     fields = []
     params = []
-    for k in ('name', 'description', 'cover_image_url', 'trailer_url', 'is_remake', 'is_remaster', 'related_game_id'):
+    for k in ('name', 'description', 'release_year', 'cover_image_url', 'trailer_url', 'is_remake', 'is_remaster', 'related_game_id'):
         if k in data:
             fields.append(f"{k} = ?")
             params.append(data[k])

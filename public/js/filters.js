@@ -1,6 +1,6 @@
 'use strict';
 import { state } from './state.js';
-import { renderGames } from './render.js';
+import { renderGames, renderPagination } from './render.js';
 
 /**
  * Filter subsystem.
@@ -24,6 +24,7 @@ export function applyFilters() {
   if (state.currentTab !== 'games') return;
 
   const { currentFilters } = state;
+  const sortSelect = document.getElementById('sort-select');
   let filtered = state.allGames;
 
   // Keyword
@@ -77,8 +78,43 @@ export function applyFilters() {
     });
   }
 
-  renderGames(filtered);
+  // Sorting
+  if (sortSelect) {
+    const sortMethod = sortSelect.value;
+    const platformCounts = state.allGamePlatforms.reduce((acc, gp) => {
+      acc[gp.game_id] = (acc[gp.game_id] || 0) + 1;
+      return acc;
+    }, {});
+
+    filtered.sort((a, b) => {
+      switch (sortMethod) {
+        case 'name_desc': return b.name.localeCompare(a.name);
+        case 'year_asc': return (a.release_year || 9999) - (b.release_year || 9999);
+        case 'year_desc': return (b.release_year || 0) - (a.release_year || 0);
+        case 'date_added_asc': return new Date(a.created_at) - new Date(b.created_at);
+        case 'date_added_desc': return new Date(b.created_at) - new Date(a.created_at);
+        case 'platform_count_asc': return (platformCounts[a.id] || 0) - (platformCounts[b.id] || 0);
+        case 'platform_count_desc': return (platformCounts[b.id] || 0) - (platformCounts[a.id] || 0);
+        case 'name_asc':
+        default: return a.name.localeCompare(b.name);
+      }
+    });
+  }
+
+  state.filteredGames = filtered; // Store all filtered games
+
+  // Update pagination state
+  state.pagination.totalPages = Math.ceil(filtered.length / state.pagination.pageSize) || 1;
+  if (state.pagination.currentPage > state.pagination.totalPages) {
+    state.pagination.currentPage = state.pagination.totalPages;
+  }
+
+  // Render the current page of games
+  const start = (state.pagination.currentPage - 1) * state.pagination.pageSize;
+  const end = start + state.pagination.pageSize;
+  renderGames(state.filteredGames.slice(start, end));
   updateTabCounts(filtered.length);
+  renderPagination();
 }
 
 /**

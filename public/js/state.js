@@ -19,6 +19,8 @@ export const state = {
   allGamePlatforms: [],
   /** All unique tags extracted from games (array of strings) */
   allTags: [],
+  /** The currently filtered and sorted list of games, before pagination */
+  filteredGames: [],
   /** Currently active tab id: 'games' | 'platforms' */
   currentTab: 'games',
   /** Game id used when adding a game to a platform via modal */
@@ -43,6 +45,11 @@ export const state = {
     /** Array of selected platform ids (strings) */
     platforms: [],
     /** Array of selected tag strings */
-    tags: []
+    tags: [],
+  },
+  pagination: {
+    currentPage: 1,
+    pageSize: 24, // Number of items to load per page/scroll
+    totalPages: 1,
   }
 };

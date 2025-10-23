@@ -15,9 +15,13 @@ export function openModal(modal) {
   modal.style.display = 'flex';
 }
 
-export function closeModal(modal) {
+export function closeModal(modal, focusReturnEl = null) {
   modal.setAttribute('aria-hidden', 'true');
   modal.style.display = 'none';
+  if (focusReturnEl && focusReturnEl instanceof HTMLElement) {
+    focusReturnEl.focus();
+    focusReturnEl.removeAttribute('data-opens-modal');
+  }
 }
 
 export async function populateFilterModal() {
@@ -331,6 +335,7 @@ export async function showEditGameModal(gameId, doOpen = true) {
   document.getElementById('modal-game-title').textContent = 'Edit Game';
   formGame.querySelector('input[name="name"]').value = game.name || '';
   formGame.querySelector('textarea[name="description"]').value = game.description || '';
+  formGame.querySelector('input[name="release_year"]').value = game.release_year || '';
   formGame.querySelector('input[name="cover_image_url"]').value = game.cover_image_url || '';
   formGame.querySelector('input[name="trailer_url"]').value = game.trailer_url || '';
   formGame.querySelector('input[name="tags"]').value = (game.tags || []).join(', ');

@@ -137,6 +137,8 @@ def _guess_mapping(headers: List[str], known_platforms: Optional[Dict[str, str]]
             mapping[h] = 'is_remaster'
         elif 'tag' in lower or 'genre' in lower:
             mapping[h] = 'tags'
+        elif 'year' in lower or 'release' in lower:
+            mapping[h] = 'release_year'
         elif re.search(r'price|bought|free|acquisition', lower):
             # platform-level info often needs manual mapping
             mapping[h] = 'acquisition_hint'
@@ -168,6 +170,11 @@ def _coerce_value(field: str, value: str):
         if v.lower() in ('0', 'false', 'no', 'n'):
             return False
         return False
+    if field == 'release_year':
+        try:
+            return int(v) if v else None
+        except ValueError:
+            return None
     if field == 'tags':
         # split on ; or ,
         parts = re.split(r'[;,]\s*', v) if v else []
@@ -229,10 +236,11 @@ def _insert_game_and_links(conn: sqlite3.Connection, game_obj: Dict[str, Any], p
     else:
         # create new
         cur.execute(
-            'INSERT INTO games (name, description, cover_image_url, trailer_url, is_remake, is_remaster, related_game_id, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO games (name, description, release_year, cover_image_url, trailer_url, is_remake, is_remaster, related_game_id, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
             (
                 game_obj.get('name'),
                 game_obj.get('description'),
+                game_obj.get('release_year'),
                 game_obj.get('cover_image_url'),
                 game_obj.get('trailer_url'),
                 int(bool(game_obj.get('is_remake'))),
@@ -478,6 +486,7 @@ def handle(req: Dict[str, Any]):
                 games_to_insert.append((
                     game_obj.get('name'),
                     game_obj.get('description'),
+                    game_obj.get('release_year'),
                     game_obj.get('cover_image_url'),
                     game_obj.get('trailer_url'),
                     int(bool(game_obj.get('is_remake'))),
@@ -495,7 +504,7 @@ def handle(req: Dict[str, Any]):
                 try:
                     # Batch insert games
                     cur = conn.cursor()
-                    cur.executemany('INSERT INTO games (name, description, cover_image_url, trailer_url, is_remake, is_remaster, related_game_id, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', games_to_insert)
+                    cur.executemany('INSERT INTO games (name, description, release_year, cover_image_url, trailer_url, is_remake, is_remaster, related_game_id, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', games_to_insert)
                     created_games = cur.rowcount
 
                     # Now that games are inserted, create a map of name -> new_id
@@ -505,7 +514,7 @@ def handle(req: Dict[str, Any]):
                     # Batch insert links
                     final_links = []
                     for link in links_to_insert:
-                        gid = new_game_ids.get(link['stagem_game_name'])
+                        gid = new_game_ids.get(link['staged_game_name'])
                         if not gid: continue
                         # This part is still iterative due to platform checks, but the game insert is batched.
                         # A more advanced version could batch these too.

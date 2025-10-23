@@ -1,184 +1,215 @@
 /*
-    Dark themed stylesheet for the Video Game Database app.
-    Focus: header, tabs, controls, responsive grid cards, and modal overlays.
-
-    Heavily commented to explain choices and make future iterations easy.
+  VibeGameDB Stylesheet
+  ---
+  This file contains all styles for the application, organized by section:
+  1. Global Styles & Variables: Root variables, resets, and body styles.
+  2. Main Layout: Header, tabs, controls, and the main content grid.
+  3. Components: Reusable elements like cards, buttons, and tooltips.
+  4. Modals: Styles for all modal dialogs and their content.
+  5. Forms & Inputs: General form styling, plus specialized inputs like pills.
+  6. States & Helpers: Utility classes for visual states (e.g., active filters).
+  7. Responsive Design: Media queries for smaller screens.
 */
 
+/* ==========================================================================
+   1. Global Styles & Variables
+   ========================================================================== */
+
 :root{
-    --bg:#0b0f14;
-    --panel:#0f1620;
-    --muted:#9aa4b2;
-    --accent:#1db954; /* pleasant green accent */
-    --accent-2:#4f8ef7;
-    --text:#e6eef6;
-    --glass: rgba(255,255,255,0.03);
+  --bg: #0b0f14;
+  --panel: #0f1620;
+  --muted: #9aa4b2;
+  --accent: #1db954; /* Green accent */
+  --accent-2: #4f8ef7; /* Blue accent */
+  --text: #e6eef6;
+  --glass: rgba(255, 255, 255, 0.03);
 }
 
-/* Reset-ish */
-*{box-sizing:border-box}
-html,body,#app{height:100%;}
-body{
-    margin:0;
-    font-family:Inter,Segoe UI,Roboto,system-ui,-apple-system,'Helvetica Neue',Arial;
-    background:linear-gradient(180deg,var(--bg),#071019);
-    color:var(--text);
-    -webkit-font-smoothing:antialiased;
+/* Basic reset and body styles */
+* { box-sizing: border-box; }
+
+html, body, #app { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: Inter, Segoe UI, Roboto, system-ui, -apple-system, 'Helvetica Neue', Arial;
+  background: linear-gradient(180deg, var(--bg), #071019);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Header */
-.app-header{display:flex;justify-content:space-between;align-items:center;padding:20px 28px;background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);border-bottom:1px solid rgba(255,255,255,0.03)}
-.title-area h1{margin:0;font-size:20px;letter-spacing:0.3px}
-.title-area .subtitle{margin:2px 0 0;color:var(--muted);font-size:12px}
-.header-controls{display:flex;align-items:center;gap:12px}
-.search-input{background:var(--glass);border:1px solid rgba(255,255,255,0.03);color:var(--text);padding:8px 12px;border-radius:8px;min-width:320px}
-.search-help{font-size:12px;color:var(--muted);margin-top:6px}
+/* ==========================================================================
+   2. Main Layout
+   ========================================================================== */
 
-/* Small circular help icon with tooltip */
-.help-icon{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;border:0;cursor:default;color:var(--bg);background:var(--accent);position:relative;font-weight:700;font-size:13px}
-.help-icon:focus{outline:2px solid rgba(79,142,247,0.3)}
-.help-tooltip{display:none;position:absolute;top:34px;left:50%;transform:translateX(-50%);background:var(--panel);color:var(--text);padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.03);white-space:nowrap;font-size:12px;z-index:999}
-.help-icon:hover .help-tooltip,.help-icon:focus .help-tooltip{display:block}
-/* When parent has tooltip-left, position tooltip to the left instead of centered */
-.help-icon.tooltip-left .help-tooltip{left:auto;right:100%;transform:translateX(0);margin-right:8px}
-.button-group{display:flex;gap:8px}
-.btn{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--text);padding:8px 12px;border-radius:8px;cursor:pointer}
-.btn:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(0,0,0,0.6)}
-.btn-primary{background:linear-gradient(90deg,var(--accent),var(--accent-2));border:0;color:#071018}
-.btn-sm{padding:6px 8px;font-size:13px}
+/* Main application header */
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 28px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
 
-/* Tabs and controls */
-.tabs{display:flex;gap:8px;padding:12px 28px}
-.tab{background:transparent;border:0;padding:10px 14px;border-radius:8px;color:var(--muted);cursor:pointer}
-.tab.active{background:rgba(255,255,255,0.02);color:var(--text);box-shadow:inset 0 -2px 0 var(--accent)}
-.controls-bar{display:flex;justify-content:space-between;align-items:center;padding:12px 28px;border-bottom:1px solid rgba(255,255,255,0.02)}
-.tab-count{color:var(--muted);font-size:12px;margin-left:4px}
-.controls-bar select{padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:var(--text)}
-.platform-filters{display:flex;gap:8px}
-.filter-btn{background:transparent;border:1px solid rgba(255,255,255,0.03);padding:6px 8px;border-radius:6px;color:var(--muted);cursor:pointer}
-.filter-btn.active{background:rgba(255,255,255,0.02);color:var(--text)}
+.title-area h1 { margin: 0; font-size: 20px; letter-spacing: 0.3px; }
+.title-area .subtitle { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+.header-controls { display: flex; align-items: center; gap: 12px; }
 
-/* Grid */
-.display-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px;padding:22px;align-items:start}
-.card{background:linear-gradient(180deg,rgba(255,255,255,0.01),transparent);padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.02);display:flex;flex-direction:column;gap:10px}
-.card-cover{width:100%;height:auto;border-radius:6px;object-fit:cover}
-.card-body{padding:6px 2px}
-.card-title{margin:0;font-size:16px}
-.card-desc{margin:6px 0;color:var(--muted);font-size:13px}
-.platform-icons{display:flex;gap:8px;flex-wrap:wrap}
-.platform-icons .plat{background:rgba(255,255,255,0.03);padding:4px 8px;border-radius:6px;font-size:12px}
-.card-actions{display:flex;justify-content:flex-end}
+/* Tab navigation */
+.tabs { display: flex; gap: 8px; padding: 12px 28px; }
+.tab { background: transparent; border: 0; padding: 10px 14px; border-radius: 8px; color: var(--muted); cursor: pointer; }
+.tab.active { background: rgba(255, 255, 255, 0.02); color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
+.tab-count { color: var(--muted); font-size: 12px; margin-left: 4px; }
 
-/* Tag pill styling */
-.tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
-.tag{background:rgba(255,255,255,0.03);padding:4px 8px;border-radius:999px;font-size:12px;cursor:pointer}
-.tag:hover{background:rgba(255,255,255,0.06)}
-.plat{cursor:pointer}
+/* Controls bar for sorting, filtering, etc. */
+.controls-bar { display: flex; justify-content: space-between; align-items: center; padding: 12px 28px; border-bottom: 1px solid rgba(255, 255, 255, 0.02); }
+.left-controls { display: flex; align-items: center; gap: 8px; }
+.active-filters { display: inline-block; margin-left: 12px; color: var(--muted); font-size: 12px; }
 
-/* Modals */
-.modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.6);z-index:120}
-.modal[aria-hidden="false"]{display:flex}
-.modal-content{width:min(920px,96%);background:var(--panel);border-radius:12px;padding:18px;border:1px solid rgba(255,255,255,0.03)}
-.modal-header{display:flex;justify-content:space-between;align-items:center}
-.modal-form{display:grid;gap:10px;margin-top:12px}
-.modal-form label{display:block;color:var(--text)}
-.modal-form input,.modal-form textarea,.modal-form select{width:100%;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:var(--text)}
-.inline-checkboxes{display:flex;align-items:center;gap:12px;padding:8px 0;flex-wrap:wrap}
+/* Main grid for displaying game/platform cards */
+.display-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 18px; padding: 22px; align-items: start; }
+
+/* Pagination controls */
+.pagination-controls { padding: 10px 20px; text-align: center; display: flex; justify-content: center; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pagination-controls .page-link { padding: 6px 12px; border-radius: 8px; cursor: pointer; border: 1px solid var(--glass); transition: all 0.1s ease-in; color: var(--text); }
+.pagination-controls a.page-link:hover { background: var(--glass); transform: translateY(-1px); }
+.pagination-controls .page-link.current { background: var(--accent-2); color: var(--bg); font-weight: bold; border-color: rgba(255, 255, 255, 0.3); }
+.pagination-controls .page-link.disabled { opacity: 0.5; cursor: not-allowed; }
+.pagination-controls .page-ellipsis { padding: 6px 12px; color: var(--muted); }
+
+/* ==========================================================================
+   3. Components
+   ========================================================================== */
+
+/* Card styles for games and platforms */
+.card { background: linear-gradient(180deg, rgba(255, 255, 255, 0.01), transparent); padding: 12px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.02); display: flex; flex-direction: column; gap: 10px; }
+.card-cover { width: 100%; height: auto; border-radius: 6px; object-fit: cover; }
+.card-body { padding: 6px 2px; }
+.card-title { margin: 0; font-size: 16px; }
+.card-desc { margin: 6px 0; color: var(--muted); font-size: 13px; }
+.card-actions { display: flex; justify-content: flex-end; }
+
+/* Clickable tag/platform pills on cards */
+.tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.tag { background: rgba(255, 255, 255, 0.03); padding: 4px 8px; border-radius: 999px; font-size: 12px; cursor: pointer; }
+.tag:hover { background: rgba(255, 255, 255, 0.06); }
+.platform-icons { display: flex; gap: 8px; flex-wrap: wrap; }
+.platform-icons .plat { background: rgba(255, 255, 255, 0.03); padding: 4px 8px; border-radius: 6px; font-size: 12px; }
+.plat { cursor: pointer; }
+.filter-by-platform {
+  color: var(--text);
+  text-decoration: none;
+}
+.filter-by-platform:hover { text-decoration: underline; }
+
+/* General button styles */
+.button-group { display: flex; gap: 8px; }
+.btn { background: transparent; border: 1px solid rgba(255, 255, 255, 0.06); color: var(--text); padding: 8px 12px; border-radius: 8px; cursor: pointer; }
+.btn:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6); }
+.btn-primary { background: linear-gradient(90deg, var(--accent), var(--accent-2)); border: 0; color: #071018; }
+.btn-sm { padding: 6px 8px; font-size: 13px; }
+
+/* Small circular help icon with a tooltip */
+.help-icon { width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; border: 0; cursor: default; color: var(--bg); background: var(--accent); position: relative; font-weight: 700; font-size: 13px; }
+.help-icon:focus { outline: 2px solid rgba(79, 142, 247, 0.3); }
+.help-tooltip { display: none; position: absolute; top: 34px; left: 50%; transform: translateX(-50%); background: var(--panel); color: var(--text); padding: 8px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.03); white-space: nowrap; font-size: 12px; z-index: 999; }
+.help-icon:hover .help-tooltip, .help-icon:focus .help-tooltip { display: block; }
+.help-icon.tooltip-left .help-tooltip { left: auto; right: 100%; transform: translateX(0); margin-right: 8px; }
+
+/* ==========================================================================
+   4. Modals
+   ========================================================================== */
+
+/* General modal container and content styles */
+.modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.6); z-index: 120; }
+.modal[aria-hidden="false"] { display: flex; }
+.modal-content { width: min(920px, 96%); background: var(--panel); border-radius: 12px; padding: 18px; border: 1px solid rgba(255, 255, 255, 0.03); }
+.modal-header { display: flex; justify-content: space-between; align-items: center; }
+.modal-actions { display: flex; gap: 8px; justify-content: space-between; align-items: center; margin-top: 8px; }
+
+/* Styles specific to the CSV import modal */
+.csv-mapping-row { display: flex; flex-direction: column; gap: 6px; }
+.csv-mapping-row label { font-size: 12px; color: var(--muted); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.csv-mapping-row select { width: 100%; padding: 6px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.03); background: var(--panel); color: var(--text); font-size: 12px; }
+.csv-preview-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.csv-preview-table th { background: rgba(255, 255, 255, 0.05); padding: 6px; text-align: left; border-bottom: 1px solid rgba(255, 255, 255, 0.03); }
+.csv-preview-table td { padding: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.02); }
+
+/* ==========================================================================
+   5. Forms & Inputs
+   ========================================================================== */
+
+/* General form layout and input styles */
+.modal-form { display: grid; gap: 10px; margin-top: 12px; }
+.modal-form label { display: block; color: var(--text); }
+.modal-form input, .modal-form textarea, .modal-form select, .search-input, .controls-bar select {
+  width: 100%;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  background: var(--panel);
+  color: var(--muted);
+}
+.search-input { min-width: 320px; }
+.controls-bar select { width: auto; padding: 6px 8px; }
+
+/* Layout for labels with buttons or sort controls */
 .label-with-button { display: flex; justify-content: space-between; align-items: center; }
+.sort-controls { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.sort-controls select { padding: 4px 6px; font-size: 12px; }
 
-.add-platform-select { margin-top: 8px; }
-.inline-checkboxes span{color:var(--text);font-weight:500}
-.inline-checkboxes label{display:inline-flex;align-items:center;gap:6px;margin:0}
-.inline-checkboxes input[type="checkbox"]{width:auto;padding:0;margin:0}
-.inline-radios{display:flex;align-items:center;gap:12px;padding:8px 0;flex-wrap:wrap}
-.inline-radios span{color:var(--text);font-weight:500}
-.inline-radios label{display:inline-flex;align-items:center;gap:6px;margin:0}
-.inline-radios input[type="radio"]{width:auto;padding:0;margin:0}
-.pill-group{display:flex;gap:8px;flex-wrap:wrap;padding-top:4px}
-.pill-group span{align-self:center;color:var(--muted);font-size:13px;margin-right:4px}
+/* Groups of inline checkboxes or radio buttons */
+.inline-checkboxes, .inline-radios { display: flex; align-items: center; gap: 12px; padding: 8px 0; flex-wrap: wrap; }
+.inline-checkboxes span, .inline-radios span { color: var(--text); font-weight: 500; }
+.inline-checkboxes label, .inline-radios label { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
+.inline-checkboxes input, .inline-radios input { width: auto; padding: 0; margin: 0; }
 
-.pill-group{display:flex;gap:8px;flex-wrap:wrap;padding-top:4px}
-.filter-checkboxes{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;padding:10px 0}
-.filter-checkboxes label{display:flex;align-items:center;gap:6px;margin:0}
-.filter-checkboxes input[type="checkbox"]{width:auto;padding:0;margin:0}
-.active-filters{display:inline-block;margin-left:12px;color:var(--muted);font-size:12px}
-.modal-actions{display:flex;gap:8px;justify-content:space-between;align-items:center;margin-top:8px}
+/* Pill-style radio/checkbox groups (used in filter and add-to-platform modals) */
+.pill-group { display: flex; gap: 8px; flex-wrap: wrap; padding-top: 4px; }
+.pill-group span { align-self: center; color: var(--muted); font-size: 13px; margin-right: 4px; }
+.pill-group input[type="radio"], .pill-group input[type="checkbox"] { display: none; }
+.pill-group label { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: var(--glass); border: 1px solid transparent; cursor: pointer; font-size: 13px; transition: all .1s ease-in; }
+.pill-group label:hover { background: rgba(255, 255, 255, 0.06); }
+.pill-group input:checked + label { background: var(--accent-2); color: var(--bg); border-color: rgba(255, 255, 255, 0.3); }
+.pill-group input:disabled + label { opacity: .5; cursor: not-allowed; background: var(--glass); }
+.pill-group .pill-box { display: inline-block; width: 14px; height: 14px; border: 1px solid var(--muted); border-radius: 3px; text-align: center; line-height: 14px; font-size: 12px; }
+.pill-group input:checked + label .pill-box { border-color: transparent; color: var(--bg); background: rgba(255, 255, 255, 0.8); }
+.pill-group .pill-count { color: var(--muted); font-size: 11px; }
+.pill-group input:checked + label .pill-count { color: rgba(0, 0, 0, 0.6); }
+.pill-group .pill-forced { pointer-events: none; opacity: 0.9; } /* For single, non-changeable options */
 
-/* Visual state when filters are active */
-.filters-on{background:var(--text);color:var(--bg);border-color:var(--text)}
+/* Scrollable container for large pill groups */
+.scrollable-pill-group { max-height: 160px; overflow-y: auto; background: rgba(0, 0, 0, 0.1); padding: 10px; border-radius: 8px; border: 1px solid var(--glass); }
 
-/* Pill-style radio/checkbox groups */
-.pill-group input[type="radio"],.pill-group input[type="checkbox"]{display:none}
-.pill-group label{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;background:var(--glass);border:1px solid transparent;cursor:pointer;font-size:13px;transition:all .1s ease-in}
-.pill-group label:hover{background:rgba(255,255,255,0.06)}
-.pill-group input:checked+label{background:var(--accent-2);color:var(--bg);border-color:rgba(255,255,255,0.3)}
-.pill-group input:disabled+label{opacity:.5;cursor:not-allowed;background:var(--glass)}
-.pill-group .pill-box{display:inline-block;width:14px;height:14px;border:1px solid var(--muted);border-radius:3px;text-align:center;line-height:14px;font-size:12px}
-/* Style for single-option, non-changeable pills */
-.pill-group .pill-forced{pointer-events:none;opacity:0.9}
-.pill-group input:checked+label .pill-box{border-color:transparent;color:var(--bg);background:rgba(255,255,255,0.8)}
-.pill-group .pill-count{color:var(--muted);font-size:11px}
-.pill-group input:checked+label .pill-count{color:rgba(0,0,0,0.6)}
-
-/* Scrollable container for pill groups */
-.scrollable-pill-group{max-height:160px;overflow-y:auto;background:rgba(0,0,0,0.1);padding:10px;border-radius:8px;border:1px solid var(--glass)}
-
-
-/* Sort controls inside modal */
-.sort-controls{display:flex;align-items:center;gap:8px;font-size:13px}
-.sort-controls select{padding:4px 6px;font-size:12px}
-
-/* CSV import modal mapping UI */
-.csv-mapping-row{display:flex;flex-direction:column;gap:6px}
-.csv-mapping-row label{font-size:12px;color:var(--muted);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.csv-mapping-row select{width:100%;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.03);background:var(--panel);color:var(--text);font-size:12px}
-.csv-preview-table{width:100%;border-collapse:collapse;font-size:12px}
-.csv-preview-table th{background:rgba(255,255,255,0.05);padding:6px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.03)}
-.csv-preview-table td{padding:6px;border-bottom:1px solid rgba(255,255,255,0.02)}
-.filters-on:hover{box-shadow:0 6px 18px rgba(0,0,0,0.6);transform:none}
-
-/* Small screens */
-@media (max-width:640px){
-    .header-controls{flex-direction:column;align-items:stretch}
-    .search-input{min-width:unset;width:100%}
-    .display-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
-}
-
-/* small helper */
-.muted{color:var(--muted);font-size:13px}
-
+/* List used in game modal to show associated platforms */
 .item-list { list-style: none; padding: 0; margin: 10px 0; border: 1px solid var(--glass); border-radius: 6px; }
 .item-list li { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--glass); }
 .item-list li:last-child { border-bottom: none; }
 .item-list .remove-item { cursor: pointer; color: var(--muted); font-size: 18px; line-height: 1; }
 .item-list .remove-item:hover { color: #ff6b6b; }
-.item-list.pills {
-    border: none;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin: 0;
-    padding: 8px 0;
-}
-.item-list.pills li {
-    background: rgba(79, 142, 247, 0.15); /* --accent-2 with alpha */
-    padding: 4px 6px 4px 10px;
-    border-radius: 999px;
-    font-size: 13px;
-    border-bottom: none;
-}
-.item-list.pills .remove-item {
-    font-size: 16px;
-    margin-left: 4px;
-    padding: 0 4px;
-    border-radius: 50%;
-    vertical-align: middle;
-}
-.item-list.pills .remove-item:hover {
-    background: rgba(255, 107, 107, 0.2);
-}
+.item-list.pills { border: none; display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 8px 0; }
+.item-list.pills li { background: rgba(79, 142, 247, 0.15); padding: 4px 6px 4px 10px; border-radius: 999px; font-size: 13px; border-bottom: none; }
+.item-list.pills .remove-item { font-size: 16px; margin-left: 4px; padding: 0 4px; border-radius: 50%; vertical-align: middle; }
+.item-list.pills .remove-item:hover { background: rgba(255, 107, 107, 0.2); }
 
-/* Small screens */
-@media (max-width:640px){
-    .header-controls{flex-direction:column;align-items:stretch}
+/* ==========================================================================
+   6. States & Helpers
+   ========================================================================== */
+
+/* Visual state for buttons when filters/options are active */
+.filters-on { background: var(--text); color: var(--bg); border-color: var(--text); }
+.filters-on:hover { box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6); transform: none; }
+
+/* General helper for muted text */
+.muted { color: var(--muted); font-size: 13px; }
+
+/* ==========================================================================
+   7. Responsive Design
+   ========================================================================== */
+
+@media (max-width: 640px) {
+  .header-controls { flex-direction: column; align-items: stretch; }
+  .search-input { min-width: unset; width: 100%; }
+  .display-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
 }

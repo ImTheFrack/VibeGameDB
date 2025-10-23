@@ -55,8 +55,19 @@
                     <select id="sort-select">
                         <option value="name_asc">Name (A-Z)</option>
                         <option value="name_desc">Name (Z-A)</option>
-                        <option value="year_desc">Release Year (Newest)</option>
+                        <option value="year_desc" selected>Release Year (Newest)</option>
                         <option value="year_asc">Release Year (Oldest)</option>
+                        <option value="date_added_desc">Date Added (Newest)</option>
+                        <option value="date_added_asc">Date Added (Oldest)</option>
+                        <option value="platform_count_desc">Platforms (Most)</option>
+                        <option value="platform_count_asc">Platforms (Fewest)</option>
+                    </select>
+                    <label for="items-per-page-select">Per Page:</label>
+                    <select id="items-per-page-select">
+                        <option value="12">12</option>
+                        <option value="24" selected>24</option>
+                        <option value="48">48</option>
+                        <option value="96">96</option>
                     </select>
                 </div>
 
@@ -66,10 +77,16 @@
                     <span id="active-filters" class="active-filters"></span>
                 </div>
             </section>
+            
+            <section id="pagination-top" class="pagination-controls"></section>
 
             <!-- Display grid: cards will be rendered here via JS -->
             <section id="display-grid" class="display-grid" aria-live="polite">
                 <!-- Cards will be dynamically rendered by JavaScript -->
+            </section>
+
+            <!-- Bottom pagination controls -->
+            <section id="pagination-bottom" class="pagination-controls">
             </section>
         </main>
     </div>
@@ -85,6 +102,7 @@
             <form id="form-game" class="modal-form" data-id-holder>
                 <label>Game Title<input type="text" name="name" required></label>
                 <label>Description<textarea name="description"></textarea></label>
+                <label>Release Year<input type="number" name="release_year" min="1970" max="2100"></label>
                 <label>Cover Image URL<input type="url" name="cover_image_url"></label>
                 <label>Trailer URL<input type="url" name="trailer_url"></label>
                 <label>Tags (comma-separated)<input type="text" name="tags" placeholder="e.g., action, RPG, indie"></label>
