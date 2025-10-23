@@ -17,6 +17,13 @@ except Exception:
         DATABASE_FILE = os.path.join('data', 'gamedb.sqlite')
     config = _C()
 
+# Import the single source of truth for the game schema
+try:
+    from .database_handler import GAME_COLUMNS, PLATFORM_COLUMNS, GAME_PLATFORM_COLUMNS
+except ImportError:
+    GAME_COLUMNS = ['name', 'description', 'cover_image_url', 'trailer_url', 'is_derived_work', 'is_sequel', 'related_game_id', 'tags']
+    PLATFORM_COLUMNS = ['id', 'name', 'supports_digital', 'supports_physical', 'icon_url', 'description']
+    GAME_PLATFORM_COLUMNS = ['game_id', 'platform_id', 'is_digital', 'acquisition_method']
 
 def _get_conn(db_path: str = None):
     """Return a new SQLite connection for the configured DB path."""
@@ -48,15 +55,19 @@ def _seed_database(conn: sqlite3.Connection) -> Dict[str, Any]:
         'supports_digital': True,
         'supports_physical': False,
         'icon_url': '/img/icon_placeholder.svg',
-        'description': 'A mysterious platform that exists only in the realm of testing. Legend has it that it runs on pure imagination and caffeine.'
+        'description': 'A mysterious platform that exists only in the realm of testing. Legend has it that it runs on pure imagination and caffeine.',
+        'year_acquired': 2024
     }
     
-    cur.execute(
-        'INSERT INTO platforms (id, name, supports_digital, supports_physical, icon_url, description) '
-        'VALUES (?, ?, ?, ?, ?, ?)',
-        (platform_data['id'], platform_data['name'], platform_data['supports_digital'], 
-         platform_data['supports_physical'], platform_data['icon_url'], platform_data['description'])
-    )
+    p_fields, p_params = [], []
+    for col in PLATFORM_COLUMNS:
+        if col in platform_data:
+            p_fields.append(col)
+            p_params.append(platform_data[col])
+    p_field_names = ", ".join(p_fields)
+    p_placeholders = ", ".join(["?"] * len(p_fields))
+    
+    cur.execute(f'INSERT INTO platforms ({p_field_names}) VALUES ({p_placeholders})', p_params)
     
     # Create test game
     game_data = {
@@ -67,25 +78,43 @@ def _seed_database(conn: sqlite3.Connection) -> Dict[str, Any]:
         'is_derived_work': False,
         'is_sequel': False,
         'related_game_id': None,
-        'tags': json.dumps(['test', 'legendary', 'mythical', 'debugging'])
+        'tags': ['test', 'legendary', 'mythical', 'debugging']
     }
     
-    cur.execute(
-        'INSERT INTO games (name, description, cover_image_url, trailer_url, is_derived_work, is_sequel, related_game_id, tags) '
-        'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        (game_data['name'], game_data['description'], game_data['cover_image_url'], 
-         game_data['trailer_url'], game_data['is_derived_work'], game_data['is_sequel'], 
-         game_data['related_game_id'], game_data['tags'])
-    )
+    # Dynamically build the insert query based on the imported schema
+    fields = []
+    params = []
+    for col in GAME_COLUMNS:
+        if col in game_data:
+            value = game_data[col]
+            fields.append(col)
+            if col == 'tags' and isinstance(value, list):
+                params.append(json.dumps(value))
+            else:
+                params.append(value)
+
+    field_names = ", ".join(fields)
+    placeholders = ", ".join(["?"] * len(fields))
+    
+    cur.execute(f'INSERT INTO games ({field_names}) VALUES ({placeholders})', params)
     
     game_id = cur.lastrowid
     
     # Link game to platform (digital)
-    cur.execute(
-        'INSERT INTO game_platforms (game_id, platform_id, is_digital, acquisition_method) '
-        'VALUES (?, ?, ?, ?)',
-        (game_id, platform_data['id'], True, 'free')
-    )
+    gp_data = {
+        'game_id': game_id,
+        'platform_id': platform_data['id'],
+        'is_digital': True,
+        'acquisition_method': 'free'
+    }
+    gp_fields, gp_params = [], []
+    for col in GAME_PLATFORM_COLUMNS:
+        if col in gp_data:
+            gp_fields.append(col)
+            gp_params.append(gp_data[col])
+    gp_field_names = ", ".join(gp_fields)
+    gp_placeholders = ", ".join(["?"] * len(gp_fields))
+    cur.execute(f'INSERT INTO game_platforms ({gp_field_names}) VALUES ({gp_placeholders})', gp_params)
     
     conn.commit()
     

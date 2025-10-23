@@ -137,12 +137,11 @@ Links games to platforms and tracks how you obtained each copy and in what forma
    - Pagination and lazy loading
    - Filter by platform, tag, keyword, acquisition method, remake/remaster status
    - Modern Filter UI 
-
-2. **Search & Autocomplete** — Fast search across games and platforms:
+ - **Search & Autocomplete** — Fast search across games and platforms:
    - Autocomplete as you type (name, description, tags, platform names)
    - Full-text search fallback
-   - Fuzzy matching for typos or partial matches
    - Dropdown suggestions with game/platform previews
+   - TODO: Add Fuzzy Logic
 
 3. **Bulk Operations**
    - Bulk select and mass-edit (e.g., change acquisition method for multiple games)

@@ -5,6 +5,7 @@ import { renderGames, renderPlatforms } from './render.js';
 import { applyFilters, extractAllTags, updateActiveFiltersDisplay, updateTabCounts } from './filters.js';
 import { openModal, closeModal, populateFilterModal, populateAddToPlatformForm, showEditGameModal, showEditPlatformModal, populateGamePlatformsList, renderAutocomplete, clearAutocomplete } from './modals.js';
 import { initImportModal } from './modals.js';
+import { normalizeName } from './utils.js';
 
 /**
  * Event wiring and data loaders.
@@ -107,6 +108,65 @@ export function wireDomEvents() {
     // Set button text for "Add" mode
     formGame.querySelector('button[type="submit"]').textContent = 'Save & Add Platform';
   });
+
+  // --- Duplicate Name Check (Live) ---
+  const gameNameInput = formGame.querySelector('input[name="name"]');
+  const gameSubmitBtn = formGame.querySelector('button[type="submit"]');
+
+  gameNameInput.addEventListener('input', () => {
+    // If the button is in an error state, reset it as the user types a new name.
+    if (gameSubmitBtn.classList.contains('btn-danger')) {
+      const gameId = formGame.dataset.gameId;
+      gameSubmitBtn.classList.remove('btn-danger');
+      gameSubmitBtn.textContent = gameId ? 'Save & Close' : 'Save & Add Platform';
+    }
+  });
+
+
+
+
+  // --- Smart Add Game: Autocomplete in Modal ---
+  const addGameNameInput = formGame.querySelector('input[name="name"]');
+  const addGameAutocompleteResults = document.getElementById('add-game-autocomplete-results');
+  if (addGameNameInput && addGameAutocompleteResults) {
+    let modalAutocompleteTimer = null;
+
+    addGameNameInput.addEventListener('input', (e) => {
+      clearTimeout(modalAutocompleteTimer);
+      const query = e.target.value.trim();
+
+      if (query.length < 2) {
+        clearAutocomplete(addGameAutocompleteResults);
+        return;
+      }
+
+      modalAutocompleteTimer = setTimeout(async () => {
+        const data = await fetchAutocomplete(query);
+        if (data && data.suggestions) {
+          // Filter out non-game results for this context
+          const gameSuggestions = data.suggestions.filter(s => s.type === 'game');
+          renderAutocomplete(gameSuggestions, addGameAutocompleteResults, 'Found existing game:');
+        }
+      }, 300);
+    });
+
+    addGameAutocompleteResults.addEventListener('click', (e) => {
+      const item = e.target.closest('.autocomplete-item');
+      if (item) {
+        const gameId = item.dataset.id;
+        // Pre-fill the form with the selected game's data, turning "Add" into "Edit"
+        showEditGameModal(gameId, false); // false = don't re-open modal
+        clearAutocomplete(addGameAutocompleteResults);
+      }
+    });
+
+    // Hide autocomplete when clicking elsewhere in the modal
+    modalGame.addEventListener('click', (e) => {
+      if (!e.target.closest('#add-game-autocomplete-results') && e.target !== addGameNameInput) {
+        clearAutocomplete(addGameAutocompleteResults);
+      }
+    });
+  }
 
   // Game type radios
   const gameTypeRadios = document.querySelectorAll('input[name="game_type"]');
@@ -363,6 +423,23 @@ export function wireDomEvents() {
     const gameId = formGame.dataset.gameId;
     const endpoint = gameId ? `/plugins/database_handler/games/${gameId}` : '/plugins/database_handler/games';
     const method = gameId ? 'PUT' : 'POST';
+
+    // --- Duplicate Name Check for New Games ---
+    if (!gameId) {
+      const normalizedNewName = normalizeName(gameData.name);
+      const isDuplicate = state.allGames.some(
+        existingGame => normalizeName(existingGame.name) === normalizedNewName
+      );
+
+      if (isDuplicate) {
+        // Show inline error on the button instead of an alert
+        gameSubmitBtn.textContent = 'Game Already Exists';
+        gameSubmitBtn.classList.add('btn-danger');
+        // Re-focus the input field to encourage user to change it
+        gameNameInput.focus();
+        return;
+      }
+    }
 
     try {
       const res = await fetch(endpoint, {

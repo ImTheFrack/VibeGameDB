@@ -25,6 +25,7 @@ export async function fetchConfig() { return apiGet('/plugins/config_handler'); 
 export async function fetchGames() { return apiGet('/plugins/database_handler/games'); }
 export async function fetchPlatforms() { return apiGet('/plugins/database_handler/platforms'); }
 export async function fetchGamePlatforms() { return apiGet('/plugins/database_handler/game_platforms'); }
+export async function fetchSchema() { return apiGet('/plugins/database_handler/schema'); }
 
 export async function checkSeed() { return apiGet('/plugins/seed_handler/check'); }
 export async function seedDb() {

@@ -56,9 +56,9 @@
                 <div class="left-controls">
                     <label for="sort-select">Sort by:</label>
                     <select id="sort-select">
-                        <option value="name_asc">Name (A-Z)</option>
+                        <option value="name_asc" selected>Name (A-Z)</option>
                         <option value="name_desc">Name (Z-A)</option>
-                        <option value="year_desc" selected>Release Year (Newest)</option>
+                        <option value="year_desc">Release Year (Newest)</option>
                         <option value="year_asc">Release Year (Oldest)</option>
                         <option value="date_added_desc">Date Added (Newest)</option>
                         <option value="date_added_asc">Date Added (Oldest)</option>
@@ -103,7 +103,10 @@
                 <button class="modal-close" data-close>&times;</button>
             </header>
             <form id="form-game" class="modal-form" data-id-holder>
-                <label>Game Title<input type="text" name="name" required></label>
+                <div style="position: relative;">
+                    <label>Game Title<input type="text" name="name" required autocomplete="off"></label>
+                    <div id="add-game-autocomplete-results" class="autocomplete-results modal-autocomplete"></div>
+                </div>
                 <label>Description<textarea name="description"></textarea></label>
                 <label>Release Year<input type="number" name="release_year" min="1970" max="2100"></label>
                 <label>Cover Image URL<input type="text" name="cover_image_url" placeholder="e.g., /img/cover.svg or https://..."></label>

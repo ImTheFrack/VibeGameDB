@@ -1,5 +1,6 @@
 'use strict';
 import { state, clearAllFilters } from './state.js';
+import { normalizeName } from './utils.js';
 import { fetchPlatforms as fetchPlatformsFromApi, fetchGamePlatforms as fetchGamePlatformsFromApi } from './api.js';
 
 /**
@@ -43,11 +44,11 @@ export async function populateFilterModal() {
         const countA = platformCounts[a.id] || 0;
         const countB = platformCounts[b.id] || 0;
         switch (sortMethod) {
-          case 'name_desc': return b.name.localeCompare(a.name);
+          case 'name_desc': return normalizeName(b.name).localeCompare(normalizeName(a.name));
           case 'count_asc': return countA - countB;
           case 'count_desc': return countB - countA;
           case 'name_asc':
-          default: return a.name.localeCompare(b.name);
+          default: return normalizeName(a.name).localeCompare(normalizeName(b.name));
         }
       });
 
@@ -245,11 +246,11 @@ export async function populateAddToPlatformForm() {
       const countA = gameCounts[a.id] || 0;
       const countB = gameCounts[b.id] || 0;
       switch (sortMethod) {
-        case 'name_desc': return b.name.localeCompare(a.name);
+        case 'name_desc': return normalizeName(b.name).localeCompare(normalizeName(a.name));
         case 'count_asc': return countA - countB;
         case 'count_desc': return countB - countA;
         case 'name_asc':
-        default: return a.name.localeCompare(b.name);
+        default: return normalizeName(a.name).localeCompare(normalizeName(b.name));
       }
     });
 
@@ -458,44 +459,48 @@ export function showEditPlatformModal(platformId, doOpen = true) {
   }
 }
 
-export function renderAutocomplete(suggestions) {
-  const resultsContainer = document.getElementById('autocomplete-results');
+export function renderAutocomplete(suggestions, container = null, footerText = null) {
+  const resultsContainer = container || document.getElementById('autocomplete-results');
   if (!suggestions || suggestions.length === 0) {
-    resultsContainer.innerHTML = '';
-    resultsContainer.style.display = 'none';
+    clearAutocomplete(resultsContainer);
     return;
   }
 
   resultsContainer.innerHTML = suggestions.map(item => {
     let context = item.context || '';
     if (context.length > 80) context = context.substring(0, 80) + '...';
+    const fuzzyIndicator = item.match_type === 'fuzzy' ? '<span class="fuzzy-match-indicator" title="Fuzzy match">~</span>' : '';
 
     return `
       <div class="autocomplete-item" data-type="${item.type}" data-id="${item.id}" data-name="${item.name}">
         <div class="item-type-icon"></div>
         <div class="item-text">
-          <div class="item-name">${item.name}</div>
+          <div class="item-name">${item.name} ${fuzzyIndicator}</div>
           <div class="item-context">${context}</div>
         </div>
       </div>
     `;
-  }).join('') + `<div class="autocomplete-footer">↑↓ navigate, ↩ filter by entry, ⇥ complete</div>`;
-
+  }).join('');
+  
+  const defaultFooter = `↑↓ to navigate, ↩ to select, ⇥ to complete`;
+  resultsContainer.innerHTML += `<div class="autocomplete-footer">${footerText || defaultFooter}</div>`;
   resultsContainer.style.display = 'block';
 }
 
-export function clearAutocomplete() {
-  const resultsContainer = document.getElementById('autocomplete-results');
-  resultsContainer.innerHTML = '';
-  resultsContainer.style.display = 'none';
+export function clearAutocomplete(container = null) {
+  const targetContainer = container || document.getElementById('autocomplete-results');
+  if (targetContainer) {
+    targetContainer.innerHTML = '';
+    targetContainer.style.display = 'none';
+  }
 }
 
 
 // --- CSV import modal helpers ---
-import { postCsvPreview, postCsvImport, igdbSearch } from './api.js';
+import { postCsvPreview, postCsvImport, igdbSearch, fetchSchema } from './api.js';
 
-function mkSelectForHeader(header, selected, platforms) {
-  const fields = ['', 'name', 'description', 'cover_image_url', 'trailer_url', 'is_derived_work', 'is_sequel', 'tags', 'acquisition_hint'];
+function mkSelectForHeader(header, selected, platforms, gameColumns) {
+  const fields = ['', ...gameColumns, 'acquisition_hint'];
   const wrap = document.createElement('div');
   wrap.className = 'csv-mapping-row';
   const label = document.createElement('label');
@@ -549,6 +554,14 @@ export async function initImportModal() {
   const btnRun = document.getElementById('btn-run-import');
   const policy = document.getElementById('import-duplicate-policy');
 
+  // Fetch the game schema to dynamically populate the mapping dropdown
+  let gameColumns = [];
+  try {
+    const schemaData = await fetchSchema();
+    gameColumns = schemaData?.game_columns || [];
+  } catch (e) {
+    console.warn('Failed to fetch game schema for import modal', e);
+  }
   // Fetch platforms once for the mapping UI
   let platforms = [];
   try {
@@ -565,7 +578,7 @@ export async function initImportModal() {
     // populate mapping UI
     mappingDiv.innerHTML = '';
     for (const h of result.headers) {
-      const selRow = mkSelectForHeader(h, result.mapping[h] || '', platforms);
+      const selRow = mkSelectForHeader(h, result.mapping[h] || '', platforms, gameColumns);
       mappingDiv.appendChild(selRow);
     }
     // render preview rows as a simple table

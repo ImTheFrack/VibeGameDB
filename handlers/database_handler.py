@@ -25,6 +25,7 @@ from typing import Dict, Any, Optional, List
 import sqlite3
 import json
 import os
+import re
 
 try:
     import config
@@ -34,6 +35,34 @@ except Exception:
         DATABASE_FILE = os.path.join('data', 'gamedb.sqlite')
         APP_TITLE = 'My Game Library'
     config = _C()
+
+# --- Schema Definition: Single Source of Truth ---
+# Define the columns for the 'games' table. This list is used to dynamically
+# build queries and validate data, reducing errors from schema changes.
+GAME_COLUMNS = [
+    'name', 'description', 'release_year', 'cover_image_url', 'trailer_url',
+    'is_derived_work', 'is_sequel', 'related_game_id'
+]
+
+# Define which columns are user-editable via the standard form.
+# This prevents accidental updates to protected fields like 'id' or 'created_at'.
+EDITABLE_GAME_COLUMNS = GAME_COLUMNS + ['tags']
+
+PLATFORM_COLUMNS = [
+    'id', 'name', 'supports_digital', 'supports_physical', 'icon_url',
+    'image_url', 'description', 'year_acquired'
+]
+EDITABLE_PLATFORM_COLUMNS = [col for col in PLATFORM_COLUMNS if col != 'id']
+
+GAME_PLATFORM_COLUMNS = [
+    'game_id', 'platform_id', 'is_digital', 'acquisition_method'
+]
+EDITABLE_GAME_PLATFORM_COLUMNS = GAME_PLATFORM_COLUMNS
+
+# Columns that can be mapped during CSV import
+IMPORT_GAME_COLUMNS = EDITABLE_GAME_COLUMNS
+IMPORT_GAME_PLATFORM_COLUMNS = ['acquisition_method'] # game_id/platform_id are handled by column header
+
 
 
 DB_SCHEMA = """
@@ -46,7 +75,6 @@ CREATE TABLE IF NOT EXISTS games (
     release_year INTEGER,
     cover_image_url TEXT,
     trailer_url TEXT,
-    is_remake BOOLEAN DEFAULT 0,
     is_derived_work BOOLEAN DEFAULT 0,
     is_sequel BOOLEAN DEFAULT 0,
     related_game_id INTEGER,
@@ -156,65 +184,38 @@ def _ensure_schema(conn: sqlite3.Connection):
 
 
 def _game_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
-    # Normalize tags to always be a list (defensive: handle legacy string storage)
-    raw_tags = row['tags']
-    tags = []
-    if raw_tags:
+    """Converts a sqlite3.Row object for a game into a dictionary."""
+    game_dict = dict(row)
+    # Ensure 'tags' is a list, parsing from JSON if it's a string.
+    if 'tags' in game_dict and isinstance(game_dict['tags'], str):
         try:
-            parsed = json.loads(raw_tags) if isinstance(raw_tags, str) else raw_tags
-            if isinstance(parsed, list):
-                tags = parsed
-            elif isinstance(parsed, str):
-                # Single string stored; wrap in list for frontend convenience
-                tags = [parsed]
-            else:
-                # Unexpected type; fallback to empty list
-                tags = []
-        except Exception:
-            # Malformed JSON, fallback to empty list
-            tags = []
-
-    return {
-        'id': row['id'],
-        'name': row['name'],
-        'description': row['description'],
-        'release_year': row['release_year'],
-        'cover_image_url': row['cover_image_url'],
-        'trailer_url': row['trailer_url'],
-        'is_remake': bool(row['is_remake']),
-        'is_derived_work': bool(row['is_derived_work']),
-        'related_game_id': row['related_game_id'],
-        'tags': tags,
-        'created_at': row['created_at'],
-        'updated_at': row['updated_at']
-    }
+            game_dict['tags'] = json.loads(game_dict['tags'])
+        except (json.JSONDecodeError, TypeError):
+            game_dict['tags'] = []
+    elif 'tags' not in game_dict or game_dict['tags'] is None:
+        game_dict['tags'] = []
+    # Ensure boolean fields are actual booleans
+    for key in ['is_derived_work', 'is_sequel']:
+        if key in game_dict:
+            game_dict[key] = bool(game_dict[key])
+    return game_dict
 
 
 def _platform_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
-    return {
-        'id': row['id'],
-        'name': row['name'],
-        'supports_digital': bool(row['supports_digital']),
-        'supports_physical': bool(row['supports_physical']),
-        'icon_url': row['icon_url'],
-        'image_url': row['image_url'],
-        'description': row['description'],
-        'year_acquired': row['year_acquired'],
-        'created_at': row['created_at'],
-        'updated_at': row['updated_at']
-    }
+    """Converts a sqlite3.Row object for a platform into a dictionary."""
+    platform_dict = dict(row)
+    for key in ['supports_digital', 'supports_physical']:
+        if key in platform_dict:
+            platform_dict[key] = bool(platform_dict[key])
+    return platform_dict
 
 
 def _game_platform_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
-    return {
-        'id': row['id'],
-        'game_id': row['game_id'],
-        'platform_id': row['platform_id'],
-        'is_digital': bool(row['is_digital']),
-        'acquisition_method': row['acquisition_method'],
-        'created_at': row['created_at'],
-        'updated_at': row['updated_at']
-    }
+    """Converts a sqlite3.Row object for a game_platform link into a dictionary."""
+    gp_dict = dict(row)
+    if 'is_digital' in gp_dict:
+        gp_dict['is_digital'] = bool(gp_dict['is_digital'])
+    return gp_dict
 
 
 def _list_games(conn: sqlite3.Connection, qparams: Dict[str, List[str]]):
@@ -246,27 +247,28 @@ def _list_games(conn: sqlite3.Connection, qparams: Dict[str, List[str]]):
 
 
 def _create_game(conn: sqlite3.Connection, data: Dict[str, Any]):
-    # Basic validation
-    name = data.get('name')
-    if not name:
+    """Creates a new game record from a dictionary of data."""
+    if not data.get('name'):
         return (400, {'error': 'name is required'})
-    description = data.get('description')
-    release_year = data.get('release_year')
-    cover = data.get('cover_image_url')
-    trailer = data.get('trailer_url')
-    # is_derived_work covers both remakes and remasters
-    is_derived_work = bool(data.get('is_derived_work', False)) or bool(data.get('is_remake', False))
-    related_game_id = data.get('related_game_id')
-    tags = data.get('tags') or []
-    if not isinstance(tags, list):
-        return (400, {'error': 'tags must be a list'})
+
+    # Filter data to only include columns that exist in the schema
+    fields = []
+    params = []
+    for col in EDITABLE_GAME_COLUMNS:
+        if col in data:
+            value = data[col]
+            if col == 'tags':
+                if not isinstance(value, list): return (400, {'error': 'tags must be a list'})
+                params.append(json.dumps(value))
+            else:
+                params.append(value)
+            fields.append(col)
+
+    field_names = ", ".join(fields)
+    placeholders = ", ".join(["?"] * len(fields))
     
     cur = conn.cursor()
-    cur.execute(
-        'INSERT INTO games (name, description, release_year, cover_image_url, trailer_url, is_derived_work, is_sequel, related_game_id, tags) '
-        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        (name, description, release_year, cover, trailer, is_derived_work, bool(data.get('is_sequel', False)), related_game_id, json.dumps(tags))
-    )
+    cur.execute(f'INSERT INTO games ({field_names}) VALUES ({placeholders})', params)
     conn.commit()
     gid = cur.lastrowid
     cur.execute('SELECT * FROM games WHERE id = ?', (gid,))
@@ -282,15 +284,17 @@ def _update_game(conn: sqlite3.Connection, gid: int, data: Dict[str, Any]):
     # Build update
     fields = []
     params = []
-    for k in ('name', 'description', 'release_year', 'cover_image_url', 'trailer_url', 'is_derived_work', 'is_sequel', 'related_game_id'):
+    # Use the centralized list of editable columns
+    for k in EDITABLE_GAME_COLUMNS:
         if k in data:
+            value = data[k]
+            if k == 'tags':
+                if not isinstance(value, list): return (400, {'error': 'tags must be a list'})
+                params.append(json.dumps(value))
+            else:
+                params.append(value)
             fields.append(f"{k} = ?")
-            params.append(data[k])
-    if 'tags' in data:
-        if not isinstance(data['tags'], list):
-            return (400, {'error': 'tags must be a list'})
-        fields.append('tags = ?')
-        params.append(json.dumps(data['tags']))
+
     if not fields:
         return (400, {'error': 'no fields to update'})
     fields.append('updated_at = CURRENT_TIMESTAMP')
@@ -351,30 +355,28 @@ def _list_platforms(conn: sqlite3.Connection):
 
 def _create_platform(conn: sqlite3.Connection, data: Dict[str, Any]):
     # Basic validation
-    name = data.get('name')
-    if not name:
+    if not data.get('name'):
         return (400, {'error': 'name is required'})
-    supports_digital = bool(data.get('supports_digital', True))
-    supports_physical = bool(data.get('supports_physical', False))
-    
-    if not supports_digital and not supports_physical:
+    if not data.get('supports_digital') and not data.get('supports_physical'):
         return (400, {'error': 'platform must support at least digital or physical'})
     
-    description = data.get('description')
-    icon_url = data.get('icon_url')
-    image_url = data.get('image_url')
-    year_acquired = data.get('year_acquired')
-    
     # Generate a simple ID from the name (lowercase, replace spaces with underscores)
-    pid = name.lower().replace(' ', '_').replace('-', '_')
-    
+    pid = data['name'].lower().replace(' ', '_').replace('-', '_')
+    data['id'] = pid
+
+    fields = []
+    params = []
+    for col in PLATFORM_COLUMNS:
+        if col in data:
+            fields.append(col)
+            params.append(data[col])
+
+    field_names = ", ".join(fields)
+    placeholders = ", ".join(["?"] * len(fields))
+
     cur = conn.cursor()
     try:
-        cur.execute(
-            'INSERT INTO platforms (id, name, supports_digital, supports_physical, icon_url, image_url, description, year_acquired) '
-            'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            (pid, name, supports_digital, supports_physical, icon_url, image_url, description, year_acquired)
-        )
+        cur.execute(f'INSERT INTO platforms ({field_names}) VALUES ({placeholders})', params)
         conn.commit()
     except sqlite3.IntegrityError:
         return (400, {'error': 'platform already exists'})
@@ -393,7 +395,7 @@ def _update_platform(conn: sqlite3.Connection, pid: str, data: Dict[str, Any]):
     # Build update
     fields = []
     params = []
-    for k in ('name', 'supports_digital', 'supports_physical', 'icon_url', 'image_url', 'description', 'year_acquired'):
+    for k in EDITABLE_PLATFORM_COLUMNS:
         if k in data:
             fields.append(f"{k} = ?")
             params.append(data[k])
@@ -451,44 +453,42 @@ def _list_game_platforms(conn: sqlite3.Connection, qparams: Dict[str, List[str]]
 
 def _create_game_platform(conn: sqlite3.Connection, data: Dict[str, Any]):
     """Link a game to a platform with a specific format (digital/physical)."""
-    game_id = data.get('game_id')
-    platform_id = data.get('platform_id')
-    is_digital = data.get('is_digital')
-    acquisition_method = data.get('acquisition_method')
-    
-    if game_id is None:
-        return (400, {'error': 'game_id is required'})
-    if platform_id is None:
-        return (400, {'error': 'platform_id is required'})
-    if is_digital is None:
+    if data.get('game_id') is None or data.get('platform_id') is None or data.get('is_digital') is None:
         return (400, {'error': 'is_digital is required (true for digital, false for physical)'})
     
-    is_digital = bool(is_digital)
+    is_digital = bool(data['is_digital'])
     
     cur = conn.cursor()
     
     # Verify game exists
-    cur.execute('SELECT 1 FROM games WHERE id = ?', (game_id,))
+    cur.execute('SELECT 1 FROM games WHERE id = ?', (data['game_id'],))
     if not cur.fetchone():
         return (404, {'error': 'game not found'})
     
     # Verify platform exists
-    cur.execute('SELECT supports_digital, supports_physical FROM platforms WHERE id = ?', (platform_id,))
+    cur.execute('SELECT supports_digital, supports_physical FROM platforms WHERE id = ?', (data['platform_id'],))
     platform = cur.fetchone()
     if not platform:
         return (404, {'error': 'platform not found'})
     
     # Validate that platform supports the requested format
     if is_digital and not platform['supports_digital']:
-        return (400, {'error': f'platform {platform_id} does not support digital distribution'})
+        return (400, {'error': f'platform {data["platform_id"]} does not support digital distribution'})
     if not is_digital and not platform['supports_physical']:
-        return (400, {'error': f'platform {platform_id} does not support physical distribution'})
+        return (400, {'error': f'platform {data["platform_id"]} does not support physical distribution'})
     
+    fields = []
+    params = []
+    for col in GAME_PLATFORM_COLUMNS:
+        if col in data:
+            fields.append(col)
+            params.append(data[col])
+
+    field_names = ", ".join(fields)
+    placeholders = ", ".join(["?"] * len(fields))
+
     try:
-        cur.execute(
-            'INSERT INTO game_platforms (game_id, platform_id, is_digital, acquisition_method) VALUES (?, ?, ?, ?)',
-            (game_id, platform_id, is_digital, acquisition_method)
-        )
+        cur.execute(f'INSERT INTO game_platforms ({field_names}) VALUES ({placeholders})', params)
         conn.commit()
     except sqlite3.IntegrityError:
         return (400, {'error': 'this game-platform-format combination already exists'})
@@ -508,7 +508,7 @@ def _update_game_platform(conn: sqlite3.Connection, gp_id: int, data: Dict[str, 
     
     fields = []
     params = []
-    for k in ('acquisition_method',):
+    for k in EDITABLE_GAME_PLATFORM_COLUMNS:
         if k in data:
             fields.append(f"{k} = ?")
             params.append(data[k])
@@ -535,6 +535,21 @@ def _delete_game_platform(conn: sqlite3.Connection, gp_id: int):
     return (200, {'status': 'deleted'})
 
 
+def _normalize_name(name: str) -> str:
+    """
+    Normalizes a name for searching, mirroring the frontend logic.
+    - Converts to lowercase.
+    - Removes leading articles.
+    - Replaces punctuation with spaces and collapses whitespace.
+    """
+    if not name:
+        return ''
+    name = name.lower().strip()
+    name = re.sub(r"^(a|an|the|le|la|l')\s+", '', name)
+    name = re.sub(r'[^\w\s]', ' ', name) # Replace punctuation with space
+    name = re.sub(r'\s+', ' ', name).strip() # Collapse whitespace
+    return name
+
 def _autocomplete(conn: sqlite3.Connection, qparams: Dict[str, List[str]]):
     """Perform a full-text search for autocomplete suggestions."""
     query = (qparams.get('q') or [''])[0].strip()
@@ -542,21 +557,22 @@ def _autocomplete(conn: sqlite3.Connection, qparams: Dict[str, List[str]]):
         return {'suggestions': []}
 
     # Align with frontend filter logic: "exact phrase" vs. word1 AND word2
+    normalized_query = _normalize_name(query)
     search_term = ''
     # Check for an exact phrase query (starts with a quote)
     if query.startswith('"'):
         # Strip leading quote and any trailing quote to handle in-progress typing
-        phrase = query.strip('"') 
+        phrase = query.strip('"').strip()
         # FTS5 phrase search syntax uses double quotes. A wildcard is added for prefix matching on the phrase.
         if phrase:
-            search_term = f'"{phrase.strip()}"*'
+            search_term = f'"{phrase}"*'
     else:
         # Default FTS5 behavior is AND for space-separated terms.
         # We add a wildcard to the last term for prefix matching.
         # e.g., "elden ri" becomes "elden ri*" which FTS5 treats as "elden AND ri*".
-        search_term = f'{query}*'
+        search_term = f'{normalized_query}*'
 
-    if not search_term:
+    if not search_term.replace('*', ''):
         return {'suggestions': []}
 
     cur = conn.cursor()
@@ -683,6 +699,16 @@ def handle(req: Dict[str, Any]):
             method = parsed.get('method', 'GET')
             if method == 'GET':
                 return _autocomplete(conn, parsed.get('query', {}))
+            return (405, {'error': 'method not allowed'})
+
+        if sp.startswith('schema'):
+            method = parsed.get('method', 'GET')
+            if method == 'GET':
+                return {
+                    'game_columns': IMPORT_GAME_COLUMNS,
+                    'platform_columns': EDITABLE_PLATFORM_COLUMNS,
+                    'game_platform_columns': IMPORT_GAME_PLATFORM_COLUMNS
+                }
             return (405, {'error': 'method not allowed'})
 
         return (404, {'error': 'unknown resource'})

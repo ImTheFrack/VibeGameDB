@@ -1,5 +1,6 @@
 'use strict';
 import { state } from './state.js';
+import { normalizeName } from './utils.js';
 import { renderGames, renderPagination } from './render.js';
 
 /**
@@ -112,7 +113,7 @@ export function applyFilters() {
 
     filtered.sort((a, b) => {
       switch (sortMethod) {
-        case 'name_desc': return b.name.localeCompare(a.name);
+        case 'name_desc': return normalizeName(b.name).localeCompare(normalizeName(a.name));
         case 'year_asc': return (a.release_year || 9999) - (b.release_year || 9999);
         case 'year_desc': return (b.release_year || 0) - (a.release_year || 0);
         case 'date_added_asc': return new Date(a.created_at) - new Date(b.created_at);
@@ -120,7 +121,7 @@ export function applyFilters() {
         case 'platform_count_asc': return (platformCounts[a.id] || 0) - (platformCounts[b.id] || 0);
         case 'platform_count_desc': return (platformCounts[b.id] || 0) - (platformCounts[a.id] || 0);
         case 'name_asc':
-        default: return a.name.localeCompare(b.name);
+        default: return normalizeName(a.name).localeCompare(normalizeName(b.name));
       }
     });
   }
