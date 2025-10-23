@@ -76,3 +76,22 @@ export async function igdbSearch(title) {
     return null;
   }
 }
+
+/**
+ * Fetches autocomplete suggestions from the backend.
+ * @param {string} query - The search query.
+ * @returns {Promise<Object|null>} A promise that resolves to the suggestions object or null on error.
+ */
+export async function fetchAutocomplete(query) {
+  try {
+    const res = await fetch(`/plugins/database_handler/autocomplete?q=${encodeURIComponent(query)}`);
+    if (!res.ok) {
+      console.error('Autocomplete fetch failed:', res.statusText);
+      return null;
+    }
+    return await res.json();
+  } catch (err) {
+    console.error('Network error during autocomplete fetch:', err);
+    return null;
+  }
+}

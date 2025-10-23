@@ -1,9 +1,9 @@
 'use strict';
-import { state } from './state.js';
-import { fetchGames as fetchGamesFromApi, fetchPlatforms as fetchPlatformsFromApi } from './api.js';
+import { state, clearAllFilters } from './state.js';
+import { fetchGames as fetchGamesFromApi, fetchPlatforms as fetchPlatformsFromApi, fetchAutocomplete } from './api.js';
 import { renderGames, renderPlatforms } from './render.js';
 import { applyFilters, extractAllTags, updateActiveFiltersDisplay, updateTabCounts } from './filters.js';
-import { openModal, closeModal, populateFilterModal, populateAddToPlatformForm, showEditGameModal, populateGamePlatformsList } from './modals.js';
+import { openModal, closeModal, populateFilterModal, populateAddToPlatformForm, showEditGameModal, showEditPlatformModal, populateGamePlatformsList, renderAutocomplete, clearAutocomplete } from './modals.js';
 import { initImportModal } from './modals.js';
 
 /**
@@ -60,6 +60,7 @@ export function wireDomEvents() {
   const itemsPerPageSelect = document.getElementById('items-per-page-select');
   const headerSearch = document.getElementById('search-input');
 
+  const autocompleteResults = document.getElementById('autocomplete-results');
   const platformFiltersContainer = document.querySelector('.platform-filters')
     || document.getElementById('filter-platforms')
     || document.createElement('div');
@@ -569,15 +570,132 @@ export function wireDomEvents() {
   // Header search
   if (headerSearch) {
     let headerTimer = null;
-    headerSearch.addEventListener('input', (e) => {
-      clearTimeout(headerTimer);
-      headerTimer = setTimeout(() => {
-        state.currentFilters.keyword = (e.target.value || '').trim().toLowerCase();
-        state.currentFilters.platforms = [];
-        state.currentFilters.tags = [];
+    let selectedIndex = -1; // -1 means no selection
+
+    const handleSelection = (item) => {
+      if (!item) return;
+      const { type, id, name } = item.dataset;
+
+      if (type === 'game') {
+        showEditGameModal(id);
+      } else if (type === 'platform') {
+        showEditPlatformModal(id);
+      } else if (type === 'tag') {
+        clearAllFilters();
+        state.currentFilters.tags = [name];
         applyFilters();
         updateActiveFiltersDisplay();
+      }
+      headerSearch.value = name;
+      clearAutocomplete();
+    };
+
+    headerSearch.addEventListener('input', (e) => {
+      clearTimeout(headerTimer);
+      const query = e.target.value.trim();
+
+      if (query.length < 2) {
+        clearAutocomplete();
+        return;
+      }
+
+      headerTimer = setTimeout(async () => {
+        const data = await fetchAutocomplete(query);
+        if (data) {
+          renderAutocomplete(data.suggestions);
+          selectedIndex = -1; // Reset selection on new results
+        }
       }, 250);
+    });
+
+    // Hide autocomplete when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('#search-container')) {
+        clearAutocomplete();
+      }
+    });
+
+    // Handle autocomplete item clicks
+    autocompleteResults.addEventListener('click', (e) => {
+      const item = e.target.closest('.autocomplete-item');
+      handleSelection(item);
+    });
+
+    // Keyboard navigation for autocomplete
+    headerSearch.addEventListener('keydown', (e) => {
+      const items = autocompleteResults.querySelectorAll('.autocomplete-item');
+      if (items.length === 0) {
+        // Fallback to keyword search on Enter if no suggestions
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const query = headerSearch.value.trim();
+          if (query) {
+            clearAllFilters();
+            state.currentFilters.keyword = query;
+            clearAutocomplete();
+            applyFilters();
+            updateActiveFiltersDisplay();
+          }
+        }
+        return;
+      }
+
+      switch (e.key) {
+        case 'ArrowDown':
+          e.preventDefault();
+          selectedIndex = (selectedIndex + 1) % items.length;
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          selectedIndex = (selectedIndex - 1 + items.length) % items.length;
+          break;
+        case 'Enter':
+          e.preventDefault();
+          if (selectedIndex > -1) {
+            // If an item is selected via arrow keys, handle that selection.
+            handleSelection(items[selectedIndex]);
+          } else {
+            // Otherwise, perform a keyword search for the exact text in the input box.
+            const query = headerSearch.value.trim();
+            if (query) {
+              clearAllFilters();
+              state.currentFilters.keyword = query;
+              clearAutocomplete();
+              applyFilters();
+              updateActiveFiltersDisplay();
+            }
+          }
+          return; // Stop further processing
+        case 'Tab':
+          // If autocomplete is open, Tab should try to complete
+          if (items.length > 0) {
+            // If an item is selected via arrows, use it. Otherwise, default to the first item.
+            const targetIndex = selectedIndex > -1 ? selectedIndex : 0;
+            const targetItem = items[targetIndex];
+
+            if (targetItem) {
+              const completeName = targetItem.dataset.name;
+              // Only prevent default and autocomplete if the input text is not already the full name
+              if (headerSearch.value.toLowerCase() !== completeName.toLowerCase()) {
+                e.preventDefault();
+                headerSearch.value = completeName;
+                // Visually select the first item if we just autocompleted to it
+                if (selectedIndex === -1) {
+                  selectedIndex = 0;
+                  items.forEach((item, index) => item.classList.toggle('selected', index === 0));
+                }
+              }
+            }
+          }
+          break;
+        case 'Escape':
+          clearAutocomplete();
+          break;
+      }
+
+      items.forEach((item, index) => {
+        item.classList.toggle('selected', index === selectedIndex);
+      });
     });
   }
 
@@ -625,12 +743,7 @@ export function wireDomEvents() {
   if (btnClearFilters) {
     btnClearFilters.addEventListener('click', (e) => {
       e.preventDefault();
-      document.getElementById('filter-keyword').value = '';
-      document.querySelectorAll('#filter-platforms input[type="checkbox"]').forEach(cb => cb.checked = false);
-      document.querySelectorAll('#filter-tags input[type="checkbox"]').forEach(cb => cb.checked = false);
-      document.querySelectorAll('#filter-game-type input[type="checkbox"]').forEach(cb => cb.checked = false);
-      document.querySelectorAll('#filter-acquisition input[type="checkbox"]').forEach(cb => cb.checked = false);
-      state.currentFilters = { keyword: '', platforms: [], tags: [], gameTypes: [], acquisitionMethods: [] };
+      clearAllFilters();
       applyFilters();
       updateActiveFiltersDisplay();
     });
@@ -649,30 +762,7 @@ export function wireDomEvents() {
       showEditGameModal(editGame.getAttribute('data-id'));
     }
     if (editPlatform) {
-      const platformId = editPlatform.getAttribute('data-id');
-      console.log('Edit platform clicked:', platformId);
-      const platform = state.allPlatforms.find(p => p.id === platformId);
-      if (!platform) {
-        alert('Platform not found!');
-        return;
-      }
-      formPlatform.reset();
-      formPlatform.dataset.platformId = platformId;
-      formPlatform.querySelector('button[type="submit"]').textContent = 'Save';
-      document.getElementById('modal-platform-title').textContent = 'Edit Platform';
-      formPlatform.querySelector('input[name="name"]').value = platform.name || '';
-      formPlatform.querySelector('textarea[name="description"]').value = platform.description || '';
-      formPlatform.querySelector('input[name="icon_url"]').value = platform.icon_url || '';
-      formPlatform.querySelector('input[name="image_url"]').value = platform.image_url || '';
-      formPlatform.querySelector('input[name="year_acquired"]').value = platform.year_acquired || '';
-      formPlatform.querySelector('input[name="supports_digital"]').checked = !!platform.supports_digital;
-      formPlatform.querySelector('input[name="supports_physical"]').checked = !!platform.supports_physical;
-
-      // Show clone/delete buttons for "Edit" mode
-      formPlatform.querySelector('.btn-clone').style.display = 'inline-block';
-      formPlatform.querySelector('.btn-delete').style.display = 'inline-block';
-
-      openModal(modalPlatform);
+      showEditPlatformModal(editPlatform.getAttribute('data-id'));
     }
     if (addToPlat) {
       const gameId = addToPlat.getAttribute('data-id');

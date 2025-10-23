@@ -55,6 +55,21 @@ body {
 .title-area h1 { margin: 0; font-size: 20px; letter-spacing: 0.3px; }
 .title-area .subtitle { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
 .header-controls { display: flex; align-items: center; gap: 12px; }
+.search-container { position: relative; }
+.autocomplete-results {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--panel);
+  border: 1px solid var(--glass);
+  border-radius: 0 0 8px 8px;
+  z-index: 1000;
+  max-height: 400px;
+  overflow-y: auto;
+  box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+}
 
 /* Tab navigation */
 .tabs { display: flex; gap: 8px; padding: 12px 28px; }
@@ -129,12 +144,28 @@ body {
 .modal-actions { display: flex; gap: 8px; justify-content: space-between; align-items: center; margin-top: 8px; }
 
 /* Styles specific to the CSV import modal */
-.csv-mapping-row { display: flex; flex-direction: column; gap: 6px; }
-.csv-mapping-row label { font-size: 12px; color: var(--muted); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.csv-mapping-row { display: flex; align-items: center; gap: 8px; }
+.csv-mapping-row label { font-size: 12px; color: var(--muted); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-basis: 40%; }
 .csv-mapping-row select { width: 100%; padding: 6px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.03); background: var(--panel); color: var(--text); font-size: 12px; }
 .csv-preview-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .csv-preview-table th { background: rgba(255, 255, 255, 0.05); padding: 6px; text-align: left; border-bottom: 1px solid rgba(255, 255, 255, 0.03); }
 .csv-preview-table td { padding: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.02); }
+
+/* Autocomplete-specific styles */
+.autocomplete-item { padding: 10px 14px; cursor: pointer; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--glass); }
+.autocomplete-item:last-child { border-bottom: none; }
+.autocomplete-item:hover, .autocomplete-item.selected { background: var(--accent-2); color: var(--bg); }
+.autocomplete-item .item-type-icon { font-size: 16px; width: 20px; text-align: center; }
+.autocomplete-item .item-text .item-name { font-weight: 500; }
+.autocomplete-item .item-text .item-context { font-size: 12px; color: var(--muted); }
+.autocomplete-item:hover .item-text .item-context, .autocomplete-item.selected .item-text .item-context { color: rgba(0,0,0,0.6); }
+
+.autocomplete-item[data-type="game"] .item-type-icon::before { content: '🎮'; }
+.autocomplete-item[data-type="platform"] .item-type-icon::before { content: '💻'; }
+.autocomplete-item[data-type="tag"] .item-type-icon::before { content: '#'; }
+.autocomplete-footer { padding: 6px 14px; font-size: 11px; color: var(--muted); background: rgba(0,0,0,0.2); text-align: right; }
+
+
 
 /* ==========================================================================
    5. Forms & Inputs

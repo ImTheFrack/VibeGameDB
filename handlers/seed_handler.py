@@ -64,17 +64,17 @@ def _seed_database(conn: sqlite3.Connection) -> Dict[str, Any]:
         'description': 'A legendary game that exists only in test databases. Rumor has it that beating this game grants you the power to debug any code. Speedrunners report completion times of 0.001 seconds.',
         'cover_image_url': '/img/cover_placeholder.svg',
         'trailer_url': 'https://example.com/testgame-trailer',
-        'is_remake': False,
-        'is_remaster': False,
+        'is_derived_work': False,
+        'is_sequel': False,
         'related_game_id': None,
         'tags': json.dumps(['test', 'legendary', 'mythical', 'debugging'])
     }
     
     cur.execute(
-        'INSERT INTO games (name, description, cover_image_url, trailer_url, is_remake, is_remaster, related_game_id, tags) '
+        'INSERT INTO games (name, description, cover_image_url, trailer_url, is_derived_work, is_sequel, related_game_id, tags) '
         'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
         (game_data['name'], game_data['description'], game_data['cover_image_url'], 
-         game_data['trailer_url'], game_data['is_remake'], game_data['is_remaster'], 
+         game_data['trailer_url'], game_data['is_derived_work'], game_data['is_sequel'], 
          game_data['related_game_id'], game_data['tags'])
     )
     

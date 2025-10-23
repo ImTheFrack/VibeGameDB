@@ -38,6 +38,7 @@ except Exception:
 
 DB_SCHEMA = """
 PRAGMA foreign_keys = ON;
+
 CREATE TABLE IF NOT EXISTS games (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -46,7 +47,8 @@ CREATE TABLE IF NOT EXISTS games (
     cover_image_url TEXT,
     trailer_url TEXT,
     is_remake BOOLEAN DEFAULT 0,
-    is_remaster BOOLEAN DEFAULT 0,
+    is_derived_work BOOLEAN DEFAULT 0,
+    is_sequel BOOLEAN DEFAULT 0,
     related_game_id INTEGER,
     tags TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -78,6 +80,59 @@ CREATE TABLE IF NOT EXISTS game_platforms (
     FOREIGN KEY (platform_id) REFERENCES platforms(id) ON DELETE CASCADE,
     UNIQUE(game_id, platform_id, is_digital)
 );
+
+-- Full-Text Search (FTS5) virtual table for autocomplete/search
+CREATE VIRTUAL TABLE IF NOT EXISTS search_idx USING fts5(
+    row_id UNINDEXED, -- Reference to original table row ID
+    item_type UNINDEXED, -- 'game', 'platform', 'tag'
+    name, -- The primary text for display and searching
+    context, -- Secondary text like description
+    tokenize = 'porter unicode61'
+);
+
+-- Triggers to keep the search_idx table in sync with the games table
+CREATE TRIGGER IF NOT EXISTS games_after_insert
+AFTER INSERT ON games
+BEGIN
+    INSERT INTO search_idx (row_id, item_type, name, context)
+    VALUES (new.id, 'game', new.name, new.description);
+END;
+
+CREATE TRIGGER IF NOT EXISTS games_after_delete
+AFTER DELETE ON games
+BEGIN
+    DELETE FROM search_idx WHERE row_id = old.id AND item_type = 'game';
+END;
+
+CREATE TRIGGER IF NOT EXISTS games_after_update
+AFTER UPDATE ON games
+BEGIN
+    UPDATE search_idx
+    SET name = new.name, context = new.description
+    WHERE row_id = new.id AND item_type = 'game';
+END;
+
+-- Triggers for platforms table
+CREATE TRIGGER IF NOT EXISTS platforms_after_insert
+AFTER INSERT ON platforms
+BEGIN
+    INSERT INTO search_idx (row_id, item_type, name, context)
+    VALUES (new.id, 'platform', new.name, new.description);
+END;
+
+CREATE TRIGGER IF NOT EXISTS platforms_after_delete
+AFTER DELETE ON platforms
+BEGIN
+    DELETE FROM search_idx WHERE row_id = old.id AND item_type = 'platform';
+END;
+
+CREATE TRIGGER IF NOT EXISTS platforms_after_update
+AFTER UPDATE ON platforms
+BEGIN
+    UPDATE search_idx
+    SET name = new.name, context = new.description
+    WHERE row_id = new.id AND item_type = 'platform';
+END;
 """
 
 
@@ -127,7 +182,7 @@ def _game_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
         'cover_image_url': row['cover_image_url'],
         'trailer_url': row['trailer_url'],
         'is_remake': bool(row['is_remake']),
-        'is_remaster': bool(row['is_remaster']),
+        'is_derived_work': bool(row['is_derived_work']),
         'related_game_id': row['related_game_id'],
         'tags': tags,
         'created_at': row['created_at'],
@@ -199,8 +254,8 @@ def _create_game(conn: sqlite3.Connection, data: Dict[str, Any]):
     release_year = data.get('release_year')
     cover = data.get('cover_image_url')
     trailer = data.get('trailer_url')
-    is_remake = bool(data.get('is_remake', False))
-    is_remaster = bool(data.get('is_remaster', False))
+    # is_derived_work covers both remakes and remasters
+    is_derived_work = bool(data.get('is_derived_work', False)) or bool(data.get('is_remake', False))
     related_game_id = data.get('related_game_id')
     tags = data.get('tags') or []
     if not isinstance(tags, list):
@@ -208,9 +263,9 @@ def _create_game(conn: sqlite3.Connection, data: Dict[str, Any]):
     
     cur = conn.cursor()
     cur.execute(
-        'INSERT INTO games (name, description, release_year, cover_image_url, trailer_url, is_remake, is_remaster, related_game_id, tags) '
+        'INSERT INTO games (name, description, release_year, cover_image_url, trailer_url, is_derived_work, is_sequel, related_game_id, tags) '
         'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        (name, description, release_year, cover, trailer, is_remake, is_remaster, related_game_id, json.dumps(tags))
+        (name, description, release_year, cover, trailer, is_derived_work, bool(data.get('is_sequel', False)), related_game_id, json.dumps(tags))
     )
     conn.commit()
     gid = cur.lastrowid
@@ -227,7 +282,7 @@ def _update_game(conn: sqlite3.Connection, gid: int, data: Dict[str, Any]):
     # Build update
     fields = []
     params = []
-    for k in ('name', 'description', 'release_year', 'cover_image_url', 'trailer_url', 'is_remake', 'is_remaster', 'related_game_id'):
+    for k in ('name', 'description', 'release_year', 'cover_image_url', 'trailer_url', 'is_derived_work', 'is_sequel', 'related_game_id'):
         if k in data:
             fields.append(f"{k} = ?")
             params.append(data[k])
@@ -480,6 +535,54 @@ def _delete_game_platform(conn: sqlite3.Connection, gp_id: int):
     return (200, {'status': 'deleted'})
 
 
+def _autocomplete(conn: sqlite3.Connection, qparams: Dict[str, List[str]]):
+    """Perform a full-text search for autocomplete suggestions."""
+    query = (qparams.get('q') or [''])[0].strip()
+    if not query:
+        return {'suggestions': []}
+
+    # Align with frontend filter logic: "exact phrase" vs. word1 AND word2
+    search_term = ''
+    # Check for an exact phrase query (starts with a quote)
+    if query.startswith('"'):
+        # Strip leading quote and any trailing quote to handle in-progress typing
+        phrase = query.strip('"') 
+        # FTS5 phrase search syntax uses double quotes. A wildcard is added for prefix matching on the phrase.
+        if phrase:
+            search_term = f'"{phrase.strip()}"*'
+    else:
+        # Default FTS5 behavior is AND for space-separated terms.
+        # We add a wildcard to the last term for prefix matching.
+        # e.g., "elden ri" becomes "elden ri*" which FTS5 treats as "elden AND ri*".
+        search_term = f'{query}*'
+
+    if not search_term:
+        return {'suggestions': []}
+
+    cur = conn.cursor()
+    
+    # Query the FTS index, ranking results.
+    # We also fetch distinct tags separately.
+    cur.execute("""
+        SELECT row_id, item_type, name, context, rank
+        FROM search_idx
+        WHERE search_idx MATCH ?
+        ORDER BY rank
+        LIMIT 10
+    """, (search_term,))
+    
+    suggestions = []
+    for row in cur.fetchall():
+        suggestions.append({
+            'id': row['row_id'],
+            'type': row['item_type'],
+            'name': row['name'],
+            'context': row['context']
+        })
+
+    return {'suggestions': suggestions}
+
+
 def handle(req: Dict[str, Any]):
     """Main plugin entrypoint. Routes requests to the appropriate helpers.
 
@@ -574,6 +677,12 @@ def handle(req: Dict[str, Any]):
                     return (400, {'error': 'invalid id'})
                 return _delete_game_platform(conn, gp_id)
             
+            return (405, {'error': 'method not allowed'})
+
+        if sp.startswith('autocomplete'):
+            method = parsed.get('method', 'GET')
+            if method == 'GET':
+                return _autocomplete(conn, parsed.get('query', {}))
             return (405, {'error': 'method not allowed'})
 
         return (404, {'error': 'unknown resource'})

@@ -1,5 +1,5 @@
 'use strict';
-import { state } from './state.js';
+import { state, clearAllFilters } from './state.js';
 import { fetchPlatforms as fetchPlatformsFromApi, fetchGamePlatforms as fetchGamePlatformsFromApi } from './api.js';
 
 /**
@@ -426,6 +426,68 @@ export async function showEditGameModal(gameId, doOpen = true) {
   formGame.querySelector('.btn-clone').parentElement.style.display = 'flex';
 
   if (doOpen) openModal(modalGame);
+}
+
+export function showEditPlatformModal(platformId, doOpen = true) {
+  const platform = state.allPlatforms.find(p => p.id === platformId);
+  if (!platform) {
+    alert('Platform not found!');
+    return;
+  }
+  const formPlatform = document.getElementById('form-platform');
+  const modalPlatform = document.getElementById('modal-platform');
+
+  formPlatform.reset();
+  formPlatform.dataset.platformId = platformId;
+  formPlatform.querySelector('button[type="submit"]').textContent = 'Save';
+  document.getElementById('modal-platform-title').textContent = 'Edit Platform';
+  formPlatform.querySelector('input[name="name"]').value = platform.name || '';
+  formPlatform.querySelector('textarea[name="description"]').value = platform.description || '';
+  formPlatform.querySelector('input[name="icon_url"]').value = platform.icon_url || '';
+  formPlatform.querySelector('input[name="image_url"]').value = platform.image_url || '';
+  formPlatform.querySelector('input[name="year_acquired"]').value = platform.year_acquired || '';
+  formPlatform.querySelector('input[name="supports_digital"]').checked = !!platform.supports_digital;
+  formPlatform.querySelector('input[name="supports_physical"]').checked = !!platform.supports_physical;
+
+  // Show clone/delete buttons for "Edit" mode
+  formPlatform.querySelector('.btn-clone').style.display = 'inline-block';
+  formPlatform.querySelector('.btn-delete').style.display = 'inline-block';
+
+  if (doOpen) {
+    openModal(modalPlatform);
+  }
+}
+
+export function renderAutocomplete(suggestions) {
+  const resultsContainer = document.getElementById('autocomplete-results');
+  if (!suggestions || suggestions.length === 0) {
+    resultsContainer.innerHTML = '';
+    resultsContainer.style.display = 'none';
+    return;
+  }
+
+  resultsContainer.innerHTML = suggestions.map(item => {
+    let context = item.context || '';
+    if (context.length > 80) context = context.substring(0, 80) + '...';
+
+    return `
+      <div class="autocomplete-item" data-type="${item.type}" data-id="${item.id}" data-name="${item.name}">
+        <div class="item-type-icon"></div>
+        <div class="item-text">
+          <div class="item-name">${item.name}</div>
+          <div class="item-context">${context}</div>
+        </div>
+      </div>
+    `;
+  }).join('') + `<div class="autocomplete-footer">↑↓ navigate, ↩ filter by entry, ⇥ complete</div>`;
+
+  resultsContainer.style.display = 'block';
+}
+
+export function clearAutocomplete() {
+  const resultsContainer = document.getElementById('autocomplete-results');
+  resultsContainer.innerHTML = '';
+  resultsContainer.style.display = 'none';
 }
 
 

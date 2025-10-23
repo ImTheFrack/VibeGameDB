@@ -132,13 +132,11 @@ Links games to platforms and tracks how you obtained each copy and in what forma
      - Assign Game to Platform
    - Validation to prevent orphan games (every game should have a platform)
    - Cascade warnings when deleting platforms with games
-
-1. **Browse & Filter** — View games and platforms in a Netflix-style scrollable interface with:
-   - ✅ IMPLEMENTED: Sortable columns (name, date added, platform count, etc.) - dropdown right now is a dummy
-   - ✅ IMPLEMENTED: Pagination and lazy loading
-   - ✅ IMPLEMENTED: Filter by platform, tag, keyword
-   - ✅ IMPLEMENTED: Modern Filter UI
-   - TODO: Filter by acquisition method, remake/remaster status
+ - **Browse & Filter** — View games and platforms in a Netflix-style scrollable interface with:
+   - Sortable columns (name, date added, platform count, etc.)
+   - Pagination and lazy loading
+   - Filter by platform, tag, keyword, acquisition method, remake/remaster status
+   - Modern Filter UI 
 
 2. **Search & Autocomplete** — Fast search across games and platforms:
    - Autocomplete as you type (name, description, tags, platform names)

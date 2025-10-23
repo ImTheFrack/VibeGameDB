@@ -57,3 +57,12 @@ export const state = {
     totalPages: 1,
   }
 };
+
+export function clearAllFilters() {
+  state.currentFilters.keyword = '';
+  state.currentFilters.platforms = [];
+  state.currentFilters.tags = [];
+  state.currentFilters.gameTypes = [];
+  state.currentFilters.acquisitionMethods = [];
+  document.getElementById('search-input').value = '';
+}
