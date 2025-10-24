@@ -136,12 +136,15 @@ export function renderBulkActionsBar() {
     bar.style.display = 'flex';
     countEl.textContent = `${selectedCount} item${selectedCount !== 1 ? 's' : ''} selected`;
 
-    // Per user request, disable bulk editing for platforms for now.
+    // Disable the edit button if no items are selected or if on the platforms tab.
+    const canBulkEdit = state.currentTab === 'games' && selectedCount > 0;
+    btnBulkEdit.disabled = !canBulkEdit;
+
     if (state.currentTab === 'platforms') {
-      btnBulkEdit.disabled = true;
-      btnBulkEdit.title = 'Coming soon.';
+      btnBulkEdit.title = 'Bulk editing for platforms is coming soon.';
+    } else if (selectedCount === 0) {
+      btnBulkEdit.title = 'Select items to edit.';
     } else {
-      btnBulkEdit.disabled = false;
       btnBulkEdit.title = 'Edit selected items';
     }
   } else {

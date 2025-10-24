@@ -42,9 +42,8 @@ except Exception:
 # build queries and validate data, reducing errors from schema changes.
 GAME_COLUMNS = [
     'name', 'description', 'release_year', 'cover_image_url', 'trailer_url',
-    'is_derived_work', 'is_sequel', 'related_game_id',
-    'igdb_id', 'esrb_rating', 'genre', 'target_audience', 
-    'developers', 'publishers', 'plot_synopsis', 'notes'
+    'is_derived_work', 'is_sequel', 'related_game_id', 'igdb_id', 'esrb_rating',
+    'genre', 'target_audience', 'developer', 'publisher', 'plot_synopsis', 'notes'
 ]
 
 # Define which columns are user-editable via the standard form.
@@ -52,10 +51,13 @@ GAME_COLUMNS = [
 EDITABLE_GAME_COLUMNS = GAME_COLUMNS + ['tags']
 
 PLATFORM_COLUMNS = [
-    'id', 'name', 'supports_digital', 'supports_physical', 'icon_url',
-    'image_url', 'description', 'year_acquired', 'generation', 'manufacturer'
+    'id', 'name', 'supports_digital', 'supports_physical', 'icon_url', 'image_url',
+    'description', 'year_acquired', 'generation', 'manufacturer'
 ]
-EDITABLE_PLATFORM_COLUMNS = [col for col in PLATFORM_COLUMNS if col != 'id']
+EDITABLE_PLATFORM_COLUMNS = [
+    'name', 'supports_digital', 'supports_physical', 'icon_url', 'image_url',
+    'description', 'year_acquired', 'generation', 'manufacturer'
+]
 
 GAME_PLATFORM_COLUMNS = [
     'game_id', 'platform_id', 'is_digital', 'acquisition_method'
@@ -86,8 +88,8 @@ CREATE TABLE IF NOT EXISTS games (
     esrb_rating TEXT,
     genre TEXT,
     target_audience TEXT,
-    developers TEXT,
-    publishers TEXT,
+    developer TEXT,
+    publisher TEXT,
     plot_synopsis TEXT,
     notes TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -103,7 +105,7 @@ CREATE TABLE IF NOT EXISTS platforms (
     image_url TEXT,
     description TEXT,
     year_acquired INTEGER,
-    generation TEXT,
+    generation INTEGER,
     manufacturer TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -127,7 +129,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS search_idx USING fts5(
     row_id UNINDEXED, -- Reference to original table row ID
     item_type UNINDEXED, -- 'game', 'platform', 'tag'
     name, -- The primary text for display and searching
-    context, -- Secondary text like description, genre, developers, etc.
+    context, -- Secondary text like description
     tokenize = 'porter unicode61'
 );
 
@@ -136,11 +138,11 @@ CREATE TRIGGER IF NOT EXISTS games_after_insert
 AFTER INSERT ON games
 BEGIN
     INSERT INTO search_idx (row_id, item_type, name, context)
-    VALUES (new.id, 'game', new.name, 
-            COALESCE(new.description, '') || ' ' || 
-            COALESCE(new.genre, '') || ' ' || 
-            COALESCE(new.developers, '') || ' ' || 
-            COALESCE(new.publishers, ''));
+    VALUES (new.id, 'game', new.name,
+        new.description || ' ' ||
+        IFNULL(new.genre, '') || ' ' ||
+        IFNULL(new.developer, '') || ' ' ||
+        IFNULL(new.publisher, ''));
 END;
 
 CREATE TRIGGER IF NOT EXISTS games_after_delete
@@ -153,11 +155,11 @@ CREATE TRIGGER IF NOT EXISTS games_after_update
 AFTER UPDATE ON games
 BEGIN
     UPDATE search_idx
-    SET name = new.name, 
-        context = COALESCE(new.description, '') || ' ' || 
-                  COALESCE(new.genre, '') || ' ' || 
-                  COALESCE(new.developers, '') || ' ' || 
-                  COALESCE(new.publishers, '')
+    SET name = new.name,
+        context = new.description || ' ' ||
+        IFNULL(new.genre, '') || ' ' ||
+        IFNULL(new.developer, '') || ' ' ||
+        IFNULL(new.publisher, '')
     WHERE row_id = new.id AND item_type = 'game';
 END;
 
@@ -166,9 +168,9 @@ CREATE TRIGGER IF NOT EXISTS platforms_after_insert
 AFTER INSERT ON platforms
 BEGIN
     INSERT INTO search_idx (row_id, item_type, name, context)
-    VALUES (new.id, 'platform', new.name, 
-            COALESCE(new.description, '') || ' ' || 
-            COALESCE(new.manufacturer, ''));
+    VALUES (new.id, 'platform', new.name,
+        new.description || ' ' ||
+        IFNULL(new.manufacturer, ''));
 END;
 
 CREATE TRIGGER IF NOT EXISTS platforms_after_delete
@@ -181,9 +183,9 @@ CREATE TRIGGER IF NOT EXISTS platforms_after_update
 AFTER UPDATE ON platforms
 BEGIN
     UPDATE search_idx
-    SET name = new.name, 
-        context = COALESCE(new.description, '') || ' ' || 
-                  COALESCE(new.manufacturer, '')
+    SET name = new.name,
+        context = new.description || ' ' ||
+        IFNULL(new.manufacturer, '')
     WHERE row_id = new.id AND item_type = 'platform';
 END;
 """
@@ -219,14 +221,6 @@ def _game_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
             game_dict['tags'] = []
     elif 'tags' not in game_dict or game_dict['tags'] is None:
         game_dict['tags'] = []
-    
-    # Parse comma-separated fields as lists
-    for field in ['developers', 'publishers']:
-        if field in game_dict and isinstance(game_dict[field], str):
-            game_dict[field] = [s.strip() for s in game_dict[field].split(',') if s.strip()]
-        elif field not in game_dict or game_dict[field] is None:
-            game_dict[field] = []
-    
     # Ensure boolean fields are actual booleans
     for key in ['is_derived_work', 'is_sequel']:
         if key in game_dict:
@@ -293,12 +287,6 @@ def _create_game(conn: sqlite3.Connection, data: Dict[str, Any]):
             if col == 'tags':
                 if not isinstance(value, list): return (400, {'error': 'tags must be a list'})
                 params.append(json.dumps(value))
-            elif col in ['developers', 'publishers']:
-                # Accept either list or comma-separated string
-                if isinstance(value, list):
-                    params.append(','.join(value))
-                else:
-                    params.append(value)
             else:
                 params.append(value)
             fields.append(col)
@@ -330,12 +318,6 @@ def _update_game(conn: sqlite3.Connection, gid: int, data: Dict[str, Any]):
             if k == 'tags':
                 if not isinstance(value, list): return (400, {'error': 'tags must be a list'})
                 params.append(json.dumps(value))
-            elif k in ['developers', 'publishers']:
-                # Accept either list or comma-separated string
-                if isinstance(value, list):
-                    params.append(','.join(value))
-                else:
-                    params.append(value)
             else:
                 params.append(value)
             fields.append(f"{k} = ?")

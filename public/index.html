@@ -54,16 +54,27 @@
             <!-- Controls bar: sorting + filtering -->
             <section class="controls-bar">
                 <div class="left-controls">
-                    <label for="sort-select">Sort by:</label>
-                    <select id="sort-select">
+                    <label for="sort-select-games">Sort by:</label>
+                    <select id="sort-select-games">
                         <option value="name_asc" selected>Name (A-Z)</option>
                         <option value="name_desc">Name (Z-A)</option>
                         <option value="year_desc">Release Year (Newest)</option>
                         <option value="year_asc">Release Year (Oldest)</option>
                         <option value="date_added_desc">Date Added (Newest)</option>
                         <option value="date_added_asc">Date Added (Oldest)</option>
-                        <option value="platform_count_desc">Platforms (Most)</option>
-                        <option value="platform_count_asc">Platforms (Fewest)</option>
+                        <option value="platform_count_desc">Platform Count (Most)</option>
+                        <option value="platform_count_asc">Platform Count (Fewest)</option>
+                    </select>
+                    <select id="sort-select-platforms" style="display: none;">
+                        <option value="name_asc" selected>Name (A-Z)</option>
+                        <option value="name_desc">Name (Z-A)</option>
+                        <option value="game_count_desc">Game Count (Most)</option>
+                        <option value="game_count_asc">Game Count (Fewest)</option>
+                        <option value="manufacturer_asc">Manufacturer (A-Z)</option>
+                        <option value="year_acquired_desc">Year Acquired (Newest)</option>
+                        <option value="year_acquired_asc">Year Acquired (Oldest)</option>
+                        <option value="generation_desc">Generation (Newest)</option>
+                        <option value="generation_asc">Generation (Oldest)</option>
                     </select>
                     <label for="items-per-page-select">Per Page:</label>
                     <select id="items-per-page-select">
@@ -119,56 +130,42 @@
                     <div id="add-game-autocomplete-results" class="autocomplete-results modal-autocomplete"></div>
                 </div>
                 <label>Description<textarea name="description"></textarea></label>
-                <label>Release Year<input type="number" name="release_year" min="1970" max="2100"></label>
-                <label>Cover Image URL<input type="text" name="cover_image_url" placeholder="e.g., /img/cover.svg or https://..."></label>
-                <label>Trailer URL<input type="text" name="trailer_url" placeholder="e.g., /trailers/promo.mp4 or https://..."></label>
-                <label>Tags (comma-separated)<input type="text" name="tags" placeholder="e.g., action, RPG, indie"></label>
-                
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; align-items: start;">
+                    <label>Release Year<input type="number" name="release_year" min="1970" max="2100"></label>
+                    <label>Genre<input type="text" name="genre" placeholder="e.g., Action RPG"></label>
+                    <label>Rating<input type="text" name="esrb_rating" placeholder="e.g., ESRB: T, PEGI: 12"></label>
+                    <label>Target Audience<input type="text" name="target_audience" placeholder="e.g., Teens, Adults"></label>
+                    <label>Developer(s)<input type="text" name="developer" placeholder="Comma-separated"></label>
+                    <label>Publisher(s)<input type="text" name="publisher" placeholder="Comma-separated"></label>
                     <label>IGDB ID<input type="number" name="igdb_id" placeholder="e.g., 12345"></label>
-                    <label>ESRB Rating
-                        <select name="esrb_rating">
-                            <option value="">Not Rated</option>
-                            <option value="E">E - Everyone</option>
-                            <option value="E10+">E10+ - Everyone 10+</option>
-                            <option value="T">T - Teen</option>
-                            <option value="M">M - Mature 17+</option>
-                            <option value="AO">AO - Adults Only 18+</option>
-                            <option value="RP">RP - Rating Pending</option>
-                        </select>
-                    </label>
+                    <div id="game-platforms-section" style="grid-column: span 2;">
+                        <label class="label-with-button"><span>Associated Platforms</span><button type="button" id="btn-associate-platform" class="btn btn-sm">Associate with Platform</button></label>
+                        <ul id="game-platforms-list" class="item-list pills"></ul>
+                    </div>
                 </div>
-                
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                    <label>Genre<input type="text" name="genre" placeholder="e.g., Action, RPG, Strategy"></label>
-                    <label>Target Audience<input type="text" name="target_audience" placeholder="e.g., Casual, Hardcore, Family"></label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <label>Plot Synopsis<textarea name="plot_synopsis" rows="3"></textarea></label>
+                    <label>Personal Notes<textarea name="notes" rows="3"></textarea></label>
                 </div>
-                
-                <label>Developer(s) (comma-separated)<input type="text" name="developers" placeholder="e.g., Nintendo, Valve, CD Projekt Red"></label>
-                <label>Publisher(s) (comma-separated)<input type="text" name="publishers" placeholder="e.g., EA, Ubisoft, Sony"></label>
-                <label>Plot Synopsis<textarea name="plot_synopsis" rows="3" placeholder="Brief description of the game's story..."></textarea></label>
-                <label>Personal Notes<textarea name="notes" rows="2" placeholder="Your thoughts, memories, or notes about this game..."></textarea></label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <label>Cover Image URL<input type="text" name="cover_image_url" placeholder="https://..."></label>
+                    <label>Trailer URL<input type="text" name="trailer_url" placeholder="https://..."></label>
+                </div>
+                <label>Tags (comma-separated)<input type="text" name="tags" placeholder="e.g., open-world, sci-fi"></label>
 
                 <!-- Container for fields that are different in bulk edit mode -->
-                <div id="bulk-edit-specific-fields"></div>
+                <div id="bulk-edit-specific-fields" style="display: none;"></div>
 
-                <div class="inline-radios">
+                <div class="inline-checkboxes" id="game-type-checkboxes">
                     <span>Type:</span>
-                    <label><input type="radio" name="game_type" value="original" checked> Original Game</label>
-                    <label><input type="radio" name="game_type" value="derived"> Remake / Remaster</label>
-                    <label><input type="radio" name="game_type" value="sequel"> Sequel</label>
+                    <label><input type="checkbox" name="is_derived_work" value="true"> Remake/Remaster</label>
+                    <label><input type="checkbox" name="is_sequel" value="true"> Sequel</label>
                 </div>
                 <div id="link-game-section" style="display:none;">
                     <label>Link to Original Game
-                        <input type="text" name="related_game_id" placeholder="Enter game ID or name">
+                        <input type="text" name="related_game_id" placeholder="Enter game ID">
                     </label>
                     <button type="button" id="btn-link-game" class="btn btn-sm">Find & Link</button>
-                </div>
-                <div id="game-platforms-section">
-                    <label class="label-with-button"><span>Associated Platforms (immediately saved)</span><button type="button" id="btn-associate-platform" class="btn btn-sm">Associate with Platform</button></label>
-                    <ul id="game-platforms-list" class="item-list pills">
-                        <!-- JS will populate this list -->
-                    </ul>
                 </div>
                 <div class="modal-actions">
                     <div class="button-group">
@@ -245,11 +242,11 @@
                 <label>Description<textarea name="description"></textarea></label>
                 <label>Icon URL<input type="text" name="icon_url" placeholder="e.g., /img/icon.svg or https://..."></label>
                 <label>Image URL<input type="text" name="image_url" placeholder="e.g., /img/banner.jpg or https://..."></label>
-                <label>Year Acquired<input type="number" name="year_acquired" min="1980" max="2100"></label>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                    <label>Generation<input type="text" name="generation" placeholder="e.g., 7th Gen, 8th Gen, Retro"></label>
-                    <label>Manufacturer<input type="text" name="manufacturer" placeholder="e.g., Sony, Microsoft, Nintendo"></label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <label>Year Acquired<input type="number" name="year_acquired" min="1980" max="2100"></label>
+                    <label>Generation<input type="number" name="generation" placeholder="e.g., 8, 9"></label>
                 </div>
+                <label>Manufacturer<input type="text" name="manufacturer" placeholder="e.g., Sony, Nintendo, Microsoft"></label>
                 <div class="modal-actions">
                     <button type="submit" class="btn btn-primary">Save</button>
                     <button type="button" class="btn" data-close>Cancel</button>
@@ -338,19 +335,14 @@
         <div class="modal-content">
             <header class="modal-header">
                 <h2>Filter Games</h2>
+                <!-- The search input needs a relative container for autocomplete positioning -->
+                <div id="filter-search-container" class="search-container" style="flex-grow: 1; margin: 0 16px;">
+                    <input type="text" id="filter-keyword" class="search-input" placeholder="Search by Name, Tag or Keyword..." autocomplete="off">
+                    <div id="filter-autocomplete-results" class="autocomplete-results"></div>
+                </div>
                 <button class="modal-close" data-close>&times;</button>
             </header>
             <form id="form-filter" class="modal-form">
-                <div style="display:flex;align-items:center;gap:8px">
-                    <div style="flex:1">
-                        <label>Search by Name, Tag or Keyword</label>
-                        <input type="text" id="filter-keyword" placeholder="e.g., Zelda, action, RPG...">
-                    </div>
-                    <div class="help-icon" tabindex="0" aria-label="Search help">?
-                        <div class="help-tooltip">Type "exact phrase" for exact match; otherwise multiple words are treated as AND.</div>
-                    </div>
-                </div>
-
                 <div>
                     <div class="label-with-button" style="margin-bottom: 8px;">
                         <div style="display: flex; align-items: center; gap: 12px;">
@@ -369,6 +361,9 @@
                                 <option value="name_desc">Name (Z-A)</option>
                                 <option value="count_desc">Games (Most)</option>
                                 <option value="count_asc">Games (Fewest)</option>
+                                <option value="manufacturer_asc">Manufacturer (A-Z)</option>
+                                <option value="year_acquired_desc">Year Acquired (Newest)</option>
+                                <option value="generation_desc">Generation (Newest)</option>
                             </select>
                         </div>
                     </div>
@@ -396,56 +391,6 @@
                 </div>
 
                 <div>
-                    <label>Filter by Type</label>
-                    <div id="filter-game-type" class="pill-group">
-                        <!-- JS will populate game type status checkboxes -->
-                    </div>
-                </div>
-
-                <div>
-                    <label>Filter by ESRB Rating</label>
-                    <div id="filter-esrb-rating" class="pill-group">
-                        <!-- JS will populate ESRB rating checkboxes -->
-                    </div>
-                </div>
-
-                <div>
-                    <div class="label-with-button" style="margin-bottom: 8px;">
-                        <label>Filter by Genre</label>
-                        <div class="sort-controls">
-                            <span>Sort by:</span>
-                            <select id="filter-genre-sort-select">
-                                <option value="name_asc">Name (A-Z)</option>
-                                <option value="name_desc">Name (Z-A)</option>
-                                <option value="count_desc">Usage (Most)</option>
-                                <option value="count_asc">Usage (Fewest)</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div id="filter-genres" class="pill-group scrollable-pill-group">
-                        <!-- JS will populate genre checkboxes -->
-                    </div>
-                </div>
-
-                <div>
-                    <div class="label-with-button" style="margin-bottom: 8px;">
-                        <label>Filter by Target Audience</label>
-                        <div class="sort-controls">
-                            <span>Sort by:</span>
-                            <select id="filter-audience-sort-select">
-                                <option value="name_asc">Name (A-Z)</option>
-                                <option value="name_desc">Name (Z-A)</option>
-                                <option value="count_desc">Usage (Most)</option>
-                                <option value="count_asc">Usage (Fewest)</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div id="filter-audiences" class="pill-group scrollable-pill-group">
-                        <!-- JS will populate target audience checkboxes -->
-                    </div>
-                </div>
-
-                <div>
                     <div class="label-with-button" style="margin-bottom: 8px;">
                         <label>Filter by Acquisition Method</label>
                         <div class="sort-controls">
@@ -460,6 +405,86 @@
                     </div>
                     <div id="filter-acquisition" class="pill-group scrollable-pill-group"></div>
                 </div>
+
+                <div>
+                    <label>Filter by Manufacturer</label>
+                    <div id="filter-manufacturer" class="pill-group scrollable-pill-group">
+                        <!-- JS will populate manufacturer checkboxes -->
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; align-items: start;">
+                    <div style="grid-column: span 2;">
+                        <label>Filter by Type</label>
+                        <div id="filter-game-type" class="pill-group">
+                            <!-- JS will populate game type status checkboxes -->
+                        </div>
+                    </div>
+                    <div style="grid-column: span 2;">
+                        <label>Filter by Release Year</label>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <input type="number" id="filter-year-min" placeholder="Min Year (e.g., 1995)">
+                            <input type="number" id="filter-year-max" placeholder="Max Year (e.g., 2024)">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="label-with-button" style="margin-bottom: 8px;">
+                        <label>Filter by Genre</label>
+                        <div class="sort-controls">
+                            <span>Sort by:</span>
+                            <select class="filter-sort-select" data-target="filter-genre">
+                                <option value="count_desc">Usage (Most)</option>
+                                <option value="count_asc">Usage (Fewest)</option>
+                                <option value="name_asc">Name (A-Z)</option>
+                                <option value="name_desc">Name (Z-A)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="filter-genre" class="pill-group scrollable-pill-group" style="max-height: 120px;">
+                        <!-- JS will populate genre checkboxes -->
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; align-items: start;">
+                    <div>
+                        <div class="label-with-button" style="margin-bottom: 8px;">
+                            <label>Publisher</label>
+                            <div class="sort-controls">
+                                <select class="filter-sort-select" data-target="filter-publisher">
+                                    <option value="count_desc"># ↓</option>
+                                    <option value="count_asc"># ↑</option>
+                                    <option value="name_asc">A-Z</option>
+                                    <option value="name_desc">Z-A</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="filter-publisher" class="pill-group scrollable-pill-group" style="max-height: 120px;"></div>
+                    </div>
+                    <div>
+                        <div class="label-with-button" style="margin-bottom: 8px;">
+                            <label>Developer</label>
+                            <div class="sort-controls">
+                                <select class="filter-sort-select" data-target="filter-developer">
+                                    <option value="count_desc"># ↓</option>
+                                    <option value="count_asc"># ↑</option>
+                                    <option value="name_asc">A-Z</option>
+                                    <option value="name_desc">Z-A</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="filter-developer" class="pill-group scrollable-pill-group" style="max-height: 120px;"></div>
+                    </div>
+                    <div>
+                        <label>Rating</label>
+                        <div id="filter-esrb" class="pill-group scrollable-pill-group" style="max-height: 120px;"></div>
+                    </div>
+                    <div>
+                        <label>Audience</label>
+                        <div id="filter-audience" class="pill-group scrollable-pill-group" style="max-height: 120px;"></div>
+                    </div>
+                </div>
+
                 <div class="modal-actions">
                     <button type="submit" class="btn btn-primary">Apply Filters</button>
                     <button type="button" id="btn-clear-filters" class="btn">Clear All</button>

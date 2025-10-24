@@ -132,6 +132,11 @@ body {
 .btn:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6); }
 .btn-primary { background: linear-gradient(90deg, var(--accent), var(--accent-2)); border: 0; color: #071018; }
 .btn-danger { background: #e74c3c; border-color: transparent; color: #fff; }
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
 .btn-sm { padding: 6px 8px; font-size: 13px; }
 
 /* Small circular help icon with a tooltip */
@@ -151,6 +156,13 @@ body {
 .modal-content { width: min(920px, 96%); background: var(--panel); border-radius: 12px; padding: 18px; border: 1px solid rgba(255, 255, 255, 0.03); }
 .modal-header { display: flex; justify-content: space-between; align-items: center; }
 .modal-actions { display: flex; gap: 8px; justify-content: space-between; align-items: center; margin-top: 8px; }
+
+/* Compact pills specifically for the filter modal */
+#modal-filter .pill-group { gap: 6px; }
+#modal-filter .pill-group label { padding: 4px 10px; font-size: 12px; gap: 6px; }
+#modal-filter .pill-group .pill-box { width: 12px; height: 12px; line-height: 12px; font-size: 10px; }
+#modal-filter .pill-group .pill-count { font-size: 10px; }
+
 
 /* Styles for the bulk edit modal buttons */
 #bulk-actions-container { display: flex; flex-direction: column; gap: 12px; }

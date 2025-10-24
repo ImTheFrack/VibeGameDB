@@ -4,283 +4,202 @@ import { normalizeName } from './utils.js';
 import { renderGames, renderPagination } from './render.js';
 
 /**
- * Filter subsystem.
+ * Filtering logic and UI updates.
  *
- * - extractAllTags: builds a unique, sorted tag list from all games
- * - applyFilters: applies keyword/platform/tag filters to games and renders
- * - updateActiveFiltersDisplay: shows an aggregate count of active filters
+ * This module contains the core filtering function `applyFilters`, helpers
+ * to extract filterable data (like tags), and functions to update the UI
+ * that displays active filters and item counts.
  */
 
+/**
+ * Extracts all unique tags from the `allGames` array and stores them in `state.allTags`.
+ */
 export function extractAllTags() {
-  const tagSet = new Set();
-  state.allGames.forEach(game => {
+  const allTags = new Set();
+  (state.allGames || []).forEach(game => {
     if (game.tags && Array.isArray(game.tags)) {
-      game.tags.forEach(tag => tagSet.add(tag));
+      game.tags.forEach(tag => allTags.add(tag));
     }
   });
-  state.allTags = Array.from(tagSet).sort();
-}
-
-export function extractAllGenres() {
-  const genreSet = new Set();
-  state.allGames.forEach(game => {
-    if (game.genre) {
-      // Split by comma if multiple genres
-      game.genre.split(',').forEach(g => {
-        const trimmed = g.trim();
-        if (trimmed) genreSet.add(trimmed);
-      });
-    }
-  });
-  return Array.from(genreSet).sort();
-}
-
-export function extractAllAudiences() {
-  const audienceSet = new Set();
-  state.allGames.forEach(game => {
-    if (game.target_audience) {
-      // Split by comma if multiple audiences
-      game.target_audience.split(',').forEach(a => {
-        const trimmed = a.trim();
-        if (trimmed) audienceSet.add(trimmed);
-      });
-    }
-  });
-  return Array.from(audienceSet).sort();
-}
-
-export function extractAllGenerations() {
-  const genSet = new Set();
-  state.allPlatforms.forEach(platform => {
-    if (platform.generation) genSet.add(platform.generation);
-  });
-  return Array.from(genSet).sort();
-}
-
-export function extractAllManufacturers() {
-  const mfgSet = new Set();
-  state.allPlatforms.forEach(platform => {
-    if (platform.manufacturer) mfgSet.add(platform.manufacturer);
-  });
-  return Array.from(mfgSet).sort();
-}
-
-export function applyFilters() {
-  if (state.currentTab !== 'games') return;
-
-  const { currentFilters } = state;
-  const sortSelect = document.getElementById('sort-select');
-  let filtered = state.allGames;
-
-  // Keyword
-  if (currentFilters.keyword) {
-    const raw = currentFilters.keyword.trim().toLowerCase();
-    if (raw.length > 0) {
-      const phraseMatch = raw.match(/^"(.*)"$/);
-      if (phraseMatch) {
-        const phrase = phraseMatch[1];
-        filtered = filtered.filter(game =>
-          (game.name && game.name.toLowerCase().includes(phrase)) ||
-          (game.description && game.description.toLowerCase().includes(phrase))
-        );
-      } else {
-        const words = raw.split(/\s+/).filter(Boolean);
-        filtered = filtered.filter(game => {
-          const hay = ((game.name || '') + ' ' + (game.description || '') + ' ' + ((game.tags || []).join(' '))).toLowerCase();
-          return words.every(w => hay.includes(w));
-        });
-      }
-    }
-  }
-
-  // Platforms
-  if (currentFilters.platforms.length > 0) {
-    const useAnd = typeof currentFilters.platformAnd !== 'undefined' ? currentFilters.platformAnd : state.platformFilterAnd;
-    if (useAnd) {
-      filtered = filtered.filter(game => {
-        return currentFilters.platforms.every(platformId => {
-          return state.allGamePlatforms.some(gp =>
-            String(gp.game_id) === String(game.id) && String(gp.platform_id) === String(platformId)
-          );
-        });
-      });
-    } else {
-      filtered = filtered.filter(game => {
-        return currentFilters.platforms.some(platformId => {
-          return state.allGamePlatforms.some(gp =>
-            String(gp.game_id) === String(game.id) && String(gp.platform_id) === String(platformId)
-          );
-        });
-      });
-    }
-  }
-
-  // Tags (AND semantics)
-  if (currentFilters.tags.length > 0) {
-    filtered = filtered.filter(game => {
-      const gameTags = game.tags || [];
-      return currentFilters.tags.every(tag => gameTags.includes(tag));
-    });
-  }
-
-  // Game Type (Original, Derived, Sequel)
-  if (currentFilters.gameTypes.length > 0) {
-    filtered = filtered.filter(game => {
-      if (currentFilters.gameTypes.includes('original') && !game.is_derived_work && !game.is_sequel) return true;
-      if (currentFilters.gameTypes.includes('derived') && game.is_derived_work) return true;
-      if (currentFilters.gameTypes.includes('sequel') && game.is_sequel) return true;
-      return false;
-    });
-  }
-
-  // Acquisition Method
-  if (currentFilters.acquisitionMethods.length > 0) {
-    const gameIdsWithMethod = new Set();
-    state.allGamePlatforms.forEach(gp => {
-      if (currentFilters.acquisitionMethods.includes(gp.acquisition_method)) {
-        gameIdsWithMethod.add(String(gp.game_id));
-      }
-    });
-
-    filtered = filtered.filter(game => {
-      return gameIdsWithMethod.has(String(game.id));
-    });
-  }
-
-  // ESRB Rating filter
-  if (currentFilters.esrbRatings.length > 0) {
-    filtered = filtered.filter(game => {
-      return currentFilters.esrbRatings.includes(game.esrb_rating);
-    });
-  }
-
-  // Genre filter (AND semantics - game must have all selected genres)
-  if (currentFilters.genres.length > 0) {
-    filtered = filtered.filter(game => {
-      if (!game.genre) return false;
-      const gameGenre = game.genre.toLowerCase();
-      return currentFilters.genres.every(genre => 
-        gameGenre.includes(genre.toLowerCase())
-      );
-    });
-  }
-
-  // Target Audience filter (OR semantics - game can match any selected audience)
-  if (currentFilters.targetAudiences.length > 0) {
-    filtered = filtered.filter(game => {
-      if (!game.target_audience) return false;
-      const gameAudience = game.target_audience.toLowerCase();
-      return currentFilters.targetAudiences.some(audience => 
-        gameAudience.includes(audience.toLowerCase())
-      );
-    });
-  }
-
-  // Platform Generation filter
-  if (currentFilters.platformGenerations.length > 0) {
-    const platformsWithGen = state.allPlatforms
-      .filter(p => currentFilters.platformGenerations.includes(p.generation))
-      .map(p => p.id);
-    
-    filtered = filtered.filter(game => {
-      return state.allGamePlatforms.some(gp => 
-        String(gp.game_id) === String(game.id) && 
-        platformsWithGen.includes(gp.platform_id)
-      );
-    });
-  }
-
-  // Platform Manufacturer filter
-  if (currentFilters.platformManufacturers.length > 0) {
-    const platformsWithMfg = state.allPlatforms
-      .filter(p => currentFilters.platformManufacturers.includes(p.manufacturer))
-      .map(p => p.id);
-    
-    filtered = filtered.filter(game => {
-      return state.allGamePlatforms.some(gp => 
-        String(gp.game_id) === String(game.id) && 
-        platformsWithMfg.includes(gp.platform_id)
-      );
-    });
-  }
-
-  // Sorting
-  if (sortSelect) {
-    const sortMethod = sortSelect.value;
-    const platformCounts = state.allGamePlatforms.reduce((acc, gp) => {
-      acc[gp.game_id] = (acc[gp.game_id] || 0) + 1;
-      return acc;
-    }, {});
-
-    filtered.sort((a, b) => {
-      switch (sortMethod) {
-        case 'name_desc': return normalizeName(b.name).localeCompare(normalizeName(a.name));
-        case 'year_asc': return (a.release_year || 9999) - (b.release_year || 9999);
-        case 'year_desc': return (b.release_year || 0) - (a.release_year || 0);
-        case 'date_added_asc': return new Date(a.created_at) - new Date(b.created_at);
-        case 'date_added_desc': return new Date(b.created_at) - new Date(a.created_at);
-        case 'platform_count_asc': return (platformCounts[a.id] || 0) - (platformCounts[b.id] || 0);
-        case 'platform_count_desc': return (platformCounts[b.id] || 0) - (platformCounts[a.id] || 0);
-        case 'name_asc':
-        default: return normalizeName(a.name).localeCompare(normalizeName(b.name));
-      }
-    });
-  }
-
-  state.filteredGames = filtered; // Store all filtered games
-
-  // Update pagination state
-  state.pagination.totalPages = Math.ceil(filtered.length / state.pagination.pageSize) || 1;
-  if (state.pagination.currentPage > state.pagination.totalPages) {
-    state.pagination.currentPage = state.pagination.totalPages;
-  }
-
-  // Render the current page of games
-  const start = (state.pagination.currentPage - 1) * state.pagination.pageSize;
-  const end = start + state.pagination.pageSize;
-  renderGames(state.filteredGames.slice(start, end));
-  updateTabCounts(filtered.length);
-  renderPagination();
+  state.allTags = Array.from(allTags).sort();
 }
 
 /**
- * Updates the count display in the 'Games' and 'Platforms' tabs.
- * @param {number} [gamesCount] - The number of games to display. If not provided, it won't be updated.
+ * Updates the item counts displayed in the tabs.
  */
-export function updateTabCounts(gamesCount) {
-  const gamesTabCount = document.querySelector('.tab[data-tab="games"] .tab-count');
-  if (gamesTabCount && typeof gamesCount !== 'undefined') {
-    gamesTabCount.textContent = `(${gamesCount})`;
-  }
-  const platformsTabCount = document.querySelector('.tab[data-tab="platforms"] .tab-count');
-  if (platformsTabCount) platformsTabCount.textContent = `(${state.allPlatforms.length})`;
+export function updateTabCounts() {
+  const gamesTab = document.querySelector('.tab[data-tab="games"] .tab-count');
+  const platformsTab = document.querySelector('.tab[data-tab="platforms"] .tab-count');
+  if (gamesTab) gamesTab.textContent = `(${state.allGames.length})`;
+  if (platformsTab) platformsTab.textContent = `(${state.allPlatforms.length})`;
 }
 
+/**
+ * Updates the text that shows which filters are currently active.
+ */
 export function updateActiveFiltersDisplay() {
-  const activeFiltersEl = document.getElementById('active-filters');
+  const el = document.getElementById('active-filters');
+  if (!el) return;
+
+  const { keyword, platforms, tags, gameTypes, acquisitionMethods, manufacturers, genres, developers, publishers, esrbRatings, targetAudiences, releaseYearMin, releaseYearMax } = state.currentFilters;
+  const parts = [];
+  if (keyword) parts.push(`"${keyword}"`);
+  if (platforms.length > 0) parts.push(`${platforms.length} platform(s)`);
+  if (tags.length > 0) parts.push(`${tags.length} tag(s)`);
+  if (gameTypes.length > 0) parts.push(`${gameTypes.length} type(s)`);
+  if (acquisitionMethods.length > 0) parts.push(`${acquisitionMethods.length} acq method(s)`);
+  if (manufacturers.length > 0) parts.push(`${manufacturers.length} manufacturer(s)`);
+  if (genres.length > 0) parts.push(`${genres.length} genre(s)`);
+  if (developers.length > 0) parts.push(`${developers.length} dev(s)`);
+  if (publishers.length > 0) parts.push(`${publishers.length} pub(s)`);
+  if (esrbRatings.length > 0) parts.push(`${esrbRatings.length} rating(s)`);
+  if (targetAudiences.length > 0) parts.push(`${targetAudiences.length} audience(s)`);
+  if (releaseYearMin || releaseYearMax) parts.push(`Year: ${releaseYearMin || '?'} - ${releaseYearMax || '?'}`);
+
   const btn = document.getElementById('btn-filter');
+  if (parts.length > 0) {
+    el.textContent = `Active: ${parts.join(', ')}`;
+    if (btn) btn.classList.add('filters-on');
+  } else {
+    el.textContent = '';
+    if (btn) btn.classList.remove('filters-on');
+  }
+}
 
-  let count = 0;
-  if (state.currentFilters.keyword) count += 1;
-  if (Array.isArray(state.currentFilters.platforms)) count += state.currentFilters.platforms.length;
-  if (Array.isArray(state.currentFilters.tags)) count += state.currentFilters.tags.length;
-  if (Array.isArray(state.currentFilters.gameTypes)) count += state.currentFilters.gameTypes.length;
-  if (Array.isArray(state.currentFilters.acquisitionMethods)) count += state.currentFilters.acquisitionMethods.length;
-  if (Array.isArray(state.currentFilters.esrbRatings)) count += state.currentFilters.esrbRatings.length;
-  if (Array.isArray(state.currentFilters.genres)) count += state.currentFilters.genres.length;
-  if (Array.isArray(state.currentFilters.targetAudiences)) count += state.currentFilters.targetAudiences.length;
-  if (Array.isArray(state.currentFilters.platformGenerations)) count += state.currentFilters.platformGenerations.length;
-  if (Array.isArray(state.currentFilters.platformManufacturers)) count += state.currentFilters.platformManufacturers.length;
+/**
+ * Applies all current filters and sorting to the game list, then re-renders.
+ */
+export function applyFilters() {
+  if (state.currentTab !== 'games') {
+    renderGames([]);
+    return;
+  }
 
-  if (btn) {
-    if (count > 0) {
-      btn.textContent = `🔍 Filter (${count})`;
-      btn.classList.add('filters-on');
-    } else {
-      btn.textContent = '🔍 Filter';
-      btn.classList.remove('filters-on');
+  let filtered = [...state.allGames];
+  const { keyword, platforms, tags, platformAnd, gameTypes, acquisitionMethods, manufacturers, genres, developers, publishers, esrbRatings, targetAudiences, releaseYearMin, releaseYearMax } = state.currentFilters;
+
+  if (keyword) {
+    const kw = keyword.toLowerCase();
+    filtered = filtered.filter(g =>
+      (g.name && g.name.toLowerCase().includes(kw)) ||
+      (g.description && g.description.toLowerCase().includes(kw)) ||
+      (g.tags && g.tags.some(t => t.toLowerCase().includes(kw))) ||
+      (g.genre && g.genre.toLowerCase().includes(kw)) ||
+      (g.developer && g.developer.toLowerCase().includes(kw)) ||
+      (g.publisher && g.publisher.toLowerCase().includes(kw))
+    );
+  }
+
+  if (platforms.length > 0) {
+    const platformSet = new Set(platforms);
+    const logicFn = platformAnd ? 'every' : 'some';
+    filtered = filtered.filter(game => {
+      const gamePlatforms = state.allGamePlatforms.filter(gp => gp.game_id === game.id).map(gp => gp.platform_id);
+      // 'some' (OR): is at least one of the game's platforms in the filter set?
+      // 'every' (AND): are all of the filter's platforms present in the game's platforms?
+      return platformAnd ? Array.from(platformSet).every(pid => gamePlatforms.includes(pid)) : gamePlatforms.some(pid => platformSet.has(pid));
+    });
+  }
+
+  if (tags.length > 0) {
+    const tagSet = new Set(tags);
+    filtered = filtered.filter(g => g.tags && g.tags.some(t => tagSet.has(t)));
+  }
+
+  if (genres.length > 0) {
+    const genreSet = new Set(genres);
+    filtered = filtered.filter(g => g.genre && g.genre.split(',').map(i => i.trim()).some(i => genreSet.has(i)));
+  }
+
+  if (manufacturers.length > 0) {
+    const manuSet = new Set(manufacturers);
+    const platformIdsFromManus = new Set(state.allPlatforms.filter(p => manuSet.has(p.manufacturer)).map(p => p.id));
+    filtered = filtered.filter(game => { // A game matches if it's on at least one platform made by the selected manufacturer(s)
+      return state.allGamePlatforms.some(gp => gp.game_id === game.id && platformIdsFromManus.has(gp.platform_id));
+    });
+  }
+
+  // Helper for comma-separated value filters
+  const applyCsvFilter = (property, filterSet) => {
+    if (filterSet.size > 0) {
+      filtered = filtered.filter(g => g[property] && g[property].split(',').map(i => i.trim()).some(i => filterSet.has(i)));
+    }
+  };
+
+  applyCsvFilter('developer', new Set(developers));
+  applyCsvFilter('publisher', new Set(publishers));
+  applyCsvFilter('esrb_rating', new Set(esrbRatings));
+  applyCsvFilter('target_audience', new Set(targetAudiences));
+
+  if (releaseYearMin) {
+    const minYear = parseInt(releaseYearMin, 10);
+    if (!isNaN(minYear)) {
+      filtered = filtered.filter(g => g.release_year && g.release_year >= minYear);
     }
   }
 
-  if (activeFiltersEl) activeFiltersEl.textContent = '';
+  if (releaseYearMax) {
+    const maxYear = parseInt(releaseYearMax, 10);
+    if (!isNaN(maxYear)) {
+      filtered = filtered.filter(g => g.release_year && g.release_year <= maxYear);
+    }
+  }
+
+  // Filter by game type (original, derived, sequel)
+  if (gameTypes.length > 0) {
+    const typeSet = new Set(gameTypes);
+    filtered = filtered.filter(g =>
+      (typeSet.has('original') && !g.is_derived_work && !g.is_sequel) ||
+      (typeSet.has('derived') && g.is_derived_work) ||
+      (typeSet.has('sequel') && g.is_sequel)
+    );
+  }
+
+  // --- Sorting ---
+  const sortSelect = document.getElementById('sort-select-games');
+  if (sortSelect) {
+    const sortMethod = sortSelect.value;
+    // Pre-calculate platform counts if needed for sorting, to avoid recalculating in the loop
+    const platformCounts = {};
+    if (sortMethod.includes('platform_count')) {
+      state.allGamePlatforms.forEach(gp => {
+        platformCounts[gp.game_id] = (platformCounts[gp.game_id] || 0) + 1;
+      });
+    }
+
+    filtered.sort((a, b) => {
+      switch (sortMethod) {
+        case 'name_desc':
+          return normalizeName(b.name).localeCompare(normalizeName(a.name));
+        case 'year_asc':
+          return (a.release_year || 9999) - (b.release_year || 9999);
+        case 'year_desc':
+          return (b.release_year || 0) - (a.release_year || 0);
+        case 'date_added_asc':
+          return new Date(a.created_at) - new Date(b.created_at);
+        case 'date_added_desc':
+          return new Date(b.created_at) - new Date(a.created_at);
+        case 'platform_count_asc':
+          return (platformCounts[a.id] || 0) - (platformCounts[b.id] || 0);
+        case 'platform_count_desc':
+          return (platformCounts[b.id] || 0) - (platformCounts[a.id] || 0);
+        case 'name_asc':
+        default:
+          return normalizeName(a.name).localeCompare(normalizeName(b.name));
+      }
+    });
+  }
+
+  state.filteredGames = filtered;
+
+  // Pagination
+  state.pagination.totalPages = Math.ceil(state.filteredGames.length / state.pagination.pageSize);
+  if (state.pagination.currentPage > state.pagination.totalPages) state.pagination.currentPage = 1;
+  const start = (state.pagination.currentPage - 1) * state.pagination.pageSize;
+  const end = start + state.pagination.pageSize;
+  const paginatedGames = state.filteredGames.slice(start, end);
+
+  renderGames(paginatedGames);
+  renderPagination();
+  updateTabCounts();
 }

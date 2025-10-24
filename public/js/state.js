@@ -50,16 +50,20 @@ export const state = {
     gameTypes: [],
     /** Array of selected acquisition methods */
     acquisitionMethods: [],
-    /** Array of selected ESRB ratings */
-    esrbRatings: [],
-    /** Array of selected genres */
+    /** Array of selected manufacturer strings */
+    manufacturers: [],
+    /** Array of selected genre strings */
     genres: [],
-    /** Array of selected target audiences */
+    /** Array of selected developer strings */
+    developers: [],
+    /** Array of selected publisher strings */
+    publishers: [],
+    /** Array of selected ESRB rating strings */
+    esrbRatings: [],
+    /** Array of selected target audience strings */
     targetAudiences: [],
-    /** Array of selected platform generations */
-    platformGenerations: [],
-    /** Array of selected platform manufacturers */
-    platformManufacturers: [],
+    releaseYearMin: null,
+    releaseYearMax: null,
   },
   pagination: {
     currentPage: 1,
@@ -79,11 +83,14 @@ export function clearAllFilters() {
   state.currentFilters.tags = [];
   state.currentFilters.gameTypes = [];
   state.currentFilters.acquisitionMethods = [];
-  state.currentFilters.esrbRatings = [];
+  state.currentFilters.manufacturers = [];
   state.currentFilters.genres = [];
+  state.currentFilters.developers = [];
+  state.currentFilters.publishers = [];
+  state.currentFilters.esrbRatings = [];
   state.currentFilters.targetAudiences = [];
-  state.currentFilters.platformGenerations = [];
-  state.currentFilters.platformManufacturers = [];
+  state.currentFilters.releaseYearMin = null;
+  state.currentFilters.releaseYearMax = null;
   state.selection.selectedGameIds.clear();
   state.selection.selectedPlatformIds.clear();
   document.getElementById('search-input').value = '';

@@ -2,8 +2,8 @@
 import { state, clearAllFilters } from './state.js';
 import { fetchGames as fetchGamesFromApi, fetchPlatforms as fetchPlatformsFromApi, fetchAutocomplete, postBulkOperation } from './api.js';
 import { renderGames, renderPlatforms, renderBulkActionsBar, renderAutocomplete } from './render.js';
-import { applyFilters, extractAllTags, updateActiveFiltersDisplay, updateTabCounts } from './filters.js'; 
-import { openModal, closeModal, populateFilterModal, populateAddToPlatformForm, showEditGameModal, showBulkEditGameModal, showEditPlatformModal, populateGamePlatformsList, clearAutocomplete, initAutocomplete } from './modals.js';
+import { applyFilters, extractAllTags, updateActiveFiltersDisplay, updateTabCounts } from './filters.js';
+import { openModal, closeModal, populateFilterModal, populateAddToPlatformForm, showEditGameModal, showBulkEditGameModal, showEditPlatformModal, populateGamePlatformsList, clearAutocomplete, initAutocomplete, resetGameModalUI } from './modals.js';
 import { initImportModal } from './modals.js';
 import { normalizeName } from './utils.js';
 
@@ -34,8 +34,31 @@ async function fetchGames() {
 async function fetchPlatforms() {
   const data = await fetchPlatformsFromApi();
   if (data) {
-    state.allPlatforms = data.platforms || [];
-    renderPlatforms(state.allPlatforms);
+    let platforms = data.platforms || [];
+    const sortSelect = document.getElementById('sort-select-platforms');
+    if (sortSelect) {
+      const sortMethod = sortSelect.value;
+      const gameCounts = state.allGamePlatforms.reduce((acc, gp) => {
+        acc[gp.platform_id] = (acc[gp.platform_id] || 0) + 1;
+        return acc;
+      }, {});
+
+      platforms.sort((a, b) => {
+        switch (sortMethod) {
+          case 'name_desc': return normalizeName(b.name).localeCompare(normalizeName(a.name));
+          case 'game_count_desc': return (gameCounts[b.id] || 0) - (gameCounts[a.id] || 0);
+          case 'game_count_asc': return (gameCounts[a.id] || 0) - (gameCounts[b.id] || 0);
+          case 'manufacturer_asc': return (a.manufacturer || 'zzz').localeCompare(b.manufacturer || 'zzz') || normalizeName(a.name).localeCompare(normalizeName(b.name));
+          case 'year_acquired_desc': return (b.year_acquired || 0) - (a.year_acquired || 0);
+          case 'year_acquired_asc': return (a.year_acquired || 9999) - (b.year_acquired || 9999);
+          case 'generation_desc': return (b.generation || 0) - (a.generation || 0);
+          case 'generation_asc': return (a.generation || 9999) - (b.generation || 9999);
+          default: return normalizeName(a.name).localeCompare(normalizeName(b.name));
+        }
+      });
+    }
+    state.allPlatforms = platforms;
+    renderPlatforms(platforms);
     updateTabCounts();
     renderBulkActionsBar();
   }
@@ -59,8 +82,9 @@ export function wireDomEvents() {
   const formAddToPlatform = document.getElementById('form-add-to-platform');
   const formFilter = document.getElementById('form-filter');
   const btnFilter = document.getElementById('btn-filter');
-  const gamesControls = document.getElementById('games-controls');
-  const sortSelect = document.getElementById('sort-select');
+  // The user's HTML has a single sort-select, so we'll adapt to that.
+  const sortSelectGames = document.getElementById('sort-select-games') || document.getElementById('sort-select');
+  const sortSelectPlatforms = document.getElementById('sort-select-platforms') || document.getElementById('sort-select');
   const itemsPerPageSelect = document.getElementById('items-per-page-select');
   const btnSelectMultiple = document.getElementById('btn-select-multiple');
   const headerSearch = document.getElementById('search-input');
@@ -107,6 +131,7 @@ export function wireDomEvents() {
   // Add Game
   btnAddGame.addEventListener('click', async () => {
     formGame.reset();
+    resetGameModalUI(); // Clean up any lingering state from bulk edit mode
     // Populate name from search input if available
     const searchInput = document.getElementById('search-input');
     if (searchInput && searchInput.value) {
@@ -160,13 +185,15 @@ export function wireDomEvents() {
   });
 
   // Game type radios
-  const gameTypeRadios = document.querySelectorAll('input[name="game_type"]');
-  gameTypeRadios.forEach(radio => {
-    radio.addEventListener('change', (e) => {
-      const linkSection = document.getElementById('link-game-section');
-      linkSection.style.display = e.target.value !== 'original' ? 'block' : 'none';
+  const gameTypeContainer = document.getElementById('game-type-checkboxes');
+  if (gameTypeContainer) {
+    gameTypeContainer.addEventListener('change', (e) => {
+    const derivedCb = gameTypeContainer.querySelector('input[name="is_derived_work"]');
+    const sequelCb = gameTypeContainer.querySelector('input[name="is_sequel"]');
+    const linkSection = document.getElementById('link-game-section');
+    linkSection.style.display = derivedCb.checked || sequelCb.checked ? 'block' : 'none';
     });
-  });
+  }
 
   // Link game button (stub)
   const btnLinkGame = document.getElementById('btn-link-game');
@@ -432,10 +459,7 @@ export function wireDomEvents() {
         const input = formGame.querySelector(`[name="${fieldName}"]`);
         if (input) {
           let value;
-          if (input.type === 'radio') {
-            const checkedRadio = formGame.querySelector(`input[name="${fieldName}"]:checked`);
-            value = checkedRadio ? (checkedRadio.value === 'true') : null; // Convert "true" string to boolean
-          } else if (input.type === 'checkbox') {
+          if (input.type === 'checkbox') {
             value = input.checked;
           } else if (fieldName === 'tags') {
             value = input.value.split(',').map(t => t.trim()).filter(Boolean);
@@ -443,8 +467,17 @@ export function wireDomEvents() {
             value = input.value;
           }
           payload.params[fieldName] = value;
+        } else {
+          // This block is intentionally left to handle the old radio button logic gracefully.
+          // The new checkbox logic is handled separately after this loop.
         }
       });
+
+      // Handle the new game type checkboxes for bulk edit
+      if (formGame.querySelector('.bulk-edit-enabler[data-enables="game_type_group"]:checked')) {
+        payload.params.is_derived_work = formGame.querySelector('input[name="is_derived_work"]').checked;
+        payload.params.is_sequel = formGame.querySelector('input[name="is_sequel"]').checked;
+      }
 
       const result = await postBulkOperation(payload);
       alert(result.message || 'Bulk edit completed.');
@@ -456,23 +489,30 @@ export function wireDomEvents() {
     const tagsStr = formData.get('tags') || ''; // This part is for single add/edit
     const tags = tagsStr.split(',').map(t => t.trim()).filter(t => t.length > 0);
 
-    const gameType = formData.get('game_type');
     const gameData = {
       name: formData.get('name'),
       description: formData.get('description'),
       release_year: formData.get('release_year') ? parseInt(formData.get('release_year')) : null,
       cover_image_url: formData.get('cover_image_url'),
       trailer_url: formData.get('trailer_url'),
-      is_derived_work: gameType === 'derived',
-      is_sequel: gameType === 'sequel',
-      related_game_id: gameType !== 'original' ? (formData.get('related_game_id') || null) : null,
-      tags: tags
+      is_derived_work: formData.get('is_derived_work') === 'true',
+      is_sequel: formData.get('is_sequel') === 'true',
+      related_game_id: (formData.get('is_derived_work') || formData.get('is_sequel')) ? (formData.get('related_game_id') || null) : null,
+      tags: tags,
+      // New fields
+      igdb_id: formData.get('igdb_id') ? parseInt(formData.get('igdb_id')) : null,
+      esrb_rating: formData.get('esrb_rating'),
+      genre: formData.get('genre'),
+      target_audience: formData.get('target_audience'),
+      developer: formData.get('developer'),
+      publisher: formData.get('publisher'),
+      plot_synopsis: formData.get('plot_synopsis'),
+      notes: formData.get('notes')
     };
 
     const endpoint = gameId ? `/plugins/database_handler/games/${gameId}` : '/plugins/database_handler/games';
     const method = gameId ? 'PUT' : 'POST';
 
-    // --- Duplicate Name Check for New Games ---
     if (!gameId) {
       const normalizedNewName = normalizeName(gameData.name);
       const isDuplicate = state.allGames.some(
@@ -527,7 +567,10 @@ export function wireDomEvents() {
       description: formData.get('description'),
       icon_url: formData.get('icon_url'),
       image_url: formData.get('image_url'),
-      year_acquired: formData.get('year_acquired') ? parseInt(formData.get('year_acquired')) : null
+      year_acquired: formData.get('year_acquired') ? parseInt(formData.get('year_acquired')) : null,
+      // New fields
+      generation: formData.get('generation') ? parseInt(formData.get('generation')) : null,
+      manufacturer: formData.get('manufacturer')
     };
 
     if (!platformData.supports_digital && !platformData.supports_physical) {
@@ -624,10 +667,18 @@ export function wireDomEvents() {
     tab.addEventListener('click', async (e) => {
       const target = e.currentTarget.getAttribute('data-tab');
       state.currentTab = target;
+      const isGamesTab = target === 'games';
+
       tabs.forEach(t => t.classList.toggle('active', t === tab));
-      if (gamesControls) gamesControls.style.display = target === 'games' ? 'flex' : 'none';
-      if (target === 'games') await fetchGames(); else await fetchPlatforms();
+      document.getElementById('games-controls').style.display = isGamesTab ? 'flex' : 'none';
+      if (sortSelectGames) sortSelectGames.style.display = isGamesTab ? 'inline-block' : 'none';
+      if (sortSelectPlatforms) sortSelectPlatforms.style.display = isGamesTab ? 'none' : 'inline-block';
+      const sortLabel = document.querySelector('label[for="sort-select-games"]') || document.querySelector('label[for="sort-select"]');
+      if (sortLabel) sortLabel.style.display = 'inline'; // Always show the label
+
+      if (isGamesTab) await fetchGames(); else await fetchPlatforms();
       renderBulkActionsBar();
+      updateTabCounts();
     });
   });
 
@@ -742,9 +793,25 @@ export function wireDomEvents() {
       const gameTypes = Array.from(typeCheckboxes).map(cb => cb.value);
       const acqCheckboxes = document.querySelectorAll('#filter-acquisition input[type="checkbox"]:checked');
       const acquisitionMethods = Array.from(acqCheckboxes).map(cb => cb.value);
+      const manuCheckboxes = document.querySelectorAll('#filter-manufacturer input[type="checkbox"]:checked');
+      const manufacturers = Array.from(manuCheckboxes).map(cb => cb.value);
+      const genreCheckboxes = document.querySelectorAll('#filter-genre input[type="checkbox"]:checked');
+      const genres = Array.from(genreCheckboxes).map(cb => cb.value);
+      const devCheckboxes = document.querySelectorAll('#filter-developer input[type="checkbox"]:checked');
+      const developers = Array.from(devCheckboxes).map(cb => cb.value);
+      const pubCheckboxes = document.querySelectorAll('#filter-publisher input[type="checkbox"]:checked');
+      const publishers = Array.from(pubCheckboxes).map(cb => cb.value);
+      const esrbCheckboxes = document.querySelectorAll('#filter-esrb input[type="checkbox"]:checked');
+      const esrbRatings = Array.from(esrbCheckboxes).map(cb => cb.value);
+      const audienceCheckboxes = document.querySelectorAll('#filter-audience input[type="checkbox"]:checked');
+      const targetAudiences = Array.from(audienceCheckboxes).map(cb => cb.value);
+
+      const releaseYearMin = document.getElementById('filter-year-min').value || null;
+      const releaseYearMax = document.getElementById('filter-year-max').value || null;
+
       const selMode = document.querySelector('input[name="platform_mode"]:checked');
       const platformAnd = selMode ? (selMode.value === 'and') : undefined;
-      state.currentFilters = { keyword, platforms, tags, platformAnd, gameTypes, acquisitionMethods };
+      state.currentFilters = { keyword, platforms, tags, platformAnd, gameTypes, acquisitionMethods, manufacturers, genres, developers, publishers, esrbRatings, targetAudiences, releaseYearMin, releaseYearMax };
       applyFilters();
       closeModal(modalFilter, btnFilter);
       renderBulkActionsBar();
@@ -834,7 +901,8 @@ export function wireDomEvents() {
       }
 
       // Clear all filters and apply just this one platform
-      state.currentFilters = { keyword: '', platforms: [platformId], tags: [], gameTypes: [], acquisitionMethods: [] };
+      clearAllFilters();
+      state.currentFilters.platforms = [platformId];
       applyFilters();
       updateActiveFiltersDisplay();
       renderBulkActionsBar();
@@ -855,12 +923,13 @@ export function wireDomEvents() {
   }
 
   // Sorting
-  if (sortSelect) {
-    sortSelect.addEventListener('change', () => {
-      state.pagination.currentPage = 1; // Reset to first page on sort change
-      applyFilters();
-    });
-  }
+  const handleSortChange = () => {
+    state.pagination.currentPage = 1; // Reset to first page on sort change
+    if (state.currentTab === 'games') applyFilters();
+    else fetchPlatforms(); // For platforms, just re-fetch and sort
+  };
+  if (sortSelectGames) sortSelectGames.addEventListener('change', handleSortChange);
+  if (sortSelectPlatforms) sortSelectPlatforms.addEventListener('change', handleSortChange);
 
   // Items per page
   if (itemsPerPageSelect) {

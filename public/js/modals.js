@@ -18,108 +18,149 @@ export function openModal(modal) {
 }
 
 export function closeModal(modal, focusReturnEl = null) {
+  // Immediately blur the active element to prevent focus from being trapped in a hidden modal.
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur();
+  }
+
   modal.setAttribute('aria-hidden', 'true');
   modal.style.display = 'none';
+
+  // Now, return focus to the appropriate element.
   if (focusReturnEl && focusReturnEl instanceof HTMLElement) {
     focusReturnEl.focus();
     focusReturnEl.removeAttribute('data-opens-modal');
+  } else {
+    document.body.focus(); // Fallback focus to the body
   }
 }
 
-export async function populateFilterModal() {
-  // --- Platforms ---
-  const platformsContainer = document.getElementById('filter-platforms');
-  const platformSortSelect = document.getElementById('filter-platform-sort-select');
-  if (platformsContainer && platformSortSelect) {
-    const platformCounts = state.allGamePlatforms.reduce((acc, gp) => {
-      acc[gp.platform_id] = (acc[gp.platform_id] || 0) + 1;
-      return acc;
-    }, {});
+/**
+ * Wires up the checkmark logic for pill-style checkboxes in a given container.
+ * @param {string} containerSelector - The CSS selector for the container.
+ */
+function updatePillEventListeners(containerSelector) {
+  // Use event delegation to be more efficient
+  document.querySelectorAll(`${containerSelector} input[type="checkbox"]`).forEach(checkbox => {
+    checkbox.addEventListener('change', (e) => {
+      const box = e.target.nextElementSibling.querySelector('.pill-box');
+      if (box) box.textContent = e.target.checked ? '✓' : '';
+    });
+  });
+}
 
-    const renderPlatforms = () => {
-      platformsContainer.innerHTML = '';
-      let sortedPlatforms = [...state.allPlatforms];
-      const sortMethod = platformSortSelect.value;
+/**
+ * Generic helper to populate, sort, and wire up a pill-based filter section.
+ * @param {object} config - Configuration for the filter section.
+ * @param {string} config.containerId - The ID of the pill container element.
+ * @param {string} config.sortSelectId - The ID of the sort dropdown element.
+ * @param {string} config.filterKey - The key in `state.currentFilters` (e.g., 'platforms', 'tags').
+ * @param {function(): Array<{id: string, name: string, count: number}>} config.dataExtractor - A function that returns the data to be rendered.
+ * @param {string} [config.idPrefix='filter'] - A prefix for the generated checkbox IDs.
+ */
+function setupPillFilter(config) {
+  const { containerId, sortSelectId, filterKey, dataExtractor, idPrefix = 'filter' } = config;
+  const container = document.getElementById(containerId);
+  const sortSelect = document.getElementById(sortSelectId);
 
-      sortedPlatforms.sort((a, b) => {
-        const countA = platformCounts[a.id] || 0;
-        const countB = platformCounts[b.id] || 0;
-        switch (sortMethod) {
-          case 'name_desc': return normalizeName(b.name).localeCompare(normalizeName(a.name));
-          case 'count_asc': return countA - countB;
-          case 'count_desc': return countB - countA;
-          case 'name_asc':
-          default: return normalizeName(a.name).localeCompare(normalizeName(b.name));
-        }
-      });
+  if (!container || !sortSelect) return;
 
-      sortedPlatforms.forEach(p => {
-        const count = platformCounts[p.id] || 0;
-        const inputId = `filter-plat-${p.id}`;
-        const isChecked = state.currentFilters.platforms.includes(String(p.id));
-        platformsContainer.innerHTML += `
-          <input type="checkbox" value="${p.id}" id="${inputId}" ${isChecked ? 'checked' : ''}>
-          <label for="${inputId}">
-            <span class="pill-box">${isChecked ? '✓' : ''}</span> ${p.name} <span class="pill-count">(${count})</span>
-          </label>
-        `;
-      });
-      updatePillEventListeners('#filter-platforms');
-    };
+  const allItems = dataExtractor();
 
-    platformSortSelect.removeEventListener('change', renderPlatforms);
-    platformSortSelect.addEventListener('change', renderPlatforms);
-    renderPlatforms();
-  }
+  const renderPills = () => {
+    container.innerHTML = '';
+    let sortedItems = [...allItems];
+    const sortMethod = sortSelect.value;
 
-  // --- Tags ---
-  const tagsContainer = document.getElementById('filter-tags');
-  const tagSortSelect = document.getElementById('filter-tag-sort-select');
-  if (tagsContainer && tagSortSelect) {
-    const tagCounts = {};
-    state.allGames.forEach(game => {
-      if (game.tags && Array.isArray(game.tags)) {
-        game.tags.forEach(tag => {
-          tagCounts[tag] = (tagCounts[tag] || 0) + 1;
-        });
+    sortedItems.sort((a, b) => {
+      switch (sortMethod) {
+        case 'name_desc': return normalizeName(b.name).localeCompare(normalizeName(a.name));
+        case 'count_asc': return a.count - b.count;
+        case 'count_desc': return b.count - a.count;
+        case 'manufacturer_asc':
+          // Sort by manufacturer, then by name
+          const manuA = a.manufacturer || 'zzz'; // Put items without a manufacturer last
+          const manuB = b.manufacturer || 'zzz';
+          return manuA.localeCompare(manuB) || normalizeName(a.name).localeCompare(normalizeName(b.name));
+        case 'year_acquired_desc': return (b.year_acquired || 0) - (a.year_acquired || 0);
+        case 'generation_desc': return (b.generation || 0) - (a.generation || 0);
+        case 'name_asc':
+        default: return normalizeName(a.name).localeCompare(normalizeName(b.name));
       }
     });
 
-    const renderTags = () => {
-      tagsContainer.innerHTML = '';
-      let sortedTags = [...state.allTags];
-      const sortMethod = tagSortSelect.value;
+    sortedItems.forEach(item => {
+      const inputId = `${idPrefix}-${filterKey}-${item.id.replace(/[^a-zA-Z0-9]/g, '')}`;
+      const isChecked = state.currentFilters[filterKey]?.includes(String(item.id));
+      container.innerHTML += `
+        <input type="checkbox" value="${item.id}" id="${inputId}" ${isChecked ? 'checked' : ''}>
+        <label for="${inputId}">
+          <span class="pill-box">${isChecked ? '✓' : ''}</span> ${item.name} <span class="pill-count">(${item.count})</span>
+        </label>
+      `;
+    });
+    updatePillEventListeners(`#${containerId}`);
+  };
 
-      sortedTags.sort((a, b) => {
-        const countA = tagCounts[a] || 0;
-        const countB = tagCounts[b] || 0;
-        switch (sortMethod) {
-          case 'name_desc': return b.localeCompare(a);
-          case 'count_asc': return countA - countB;
-          case 'count_desc': return countB - countA;
-          case 'name_asc':
-          default: return a.localeCompare(b);
+  sortSelect.removeEventListener('change', renderPills);
+  sortSelect.addEventListener('change', renderPills);
+  renderPills();
+}
+
+
+export async function populateFilterModal() {
+  // --- Platforms ---
+  setupPillFilter({
+    containerId: 'filter-platforms',
+    sortSelectId: 'filter-platform-sort-select',
+    filterKey: 'platforms',
+    idPrefix: 'plat',
+    dataExtractor: () => {
+      const platformCounts = state.allGamePlatforms.reduce((acc, gp) => {
+        acc[gp.platform_id] = (acc[gp.platform_id] || 0) + 1;
+        return acc;
+      }, {});
+      return state.allPlatforms.map(p => ({ ...p, count: platformCounts[p.id] || 0 }));
+    }
+  });
+
+  // --- Tags ---
+  setupPillFilter({
+    containerId: 'filter-tags',
+    sortSelectId: 'filter-tag-sort-select',
+    filterKey: 'tags',
+    idPrefix: 'tag',
+    dataExtractor: () => {
+      const tagCounts = {};
+      state.allGames.forEach(game => {
+        if (game.tags && Array.isArray(game.tags)) {
+          game.tags.forEach(tag => {
+            tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+          });
         }
       });
+      return state.allTags.map(tag => ({ id: tag, name: tag, count: tagCounts[tag] || 0 }));
+    }
+  });
 
-      sortedTags.forEach(tag => {
-        const count = tagCounts[tag] || 0;
-        const inputId = `filter-tag-${tag.replace(/[^a-zA-Z0-9]/g, '')}`;
-        const isChecked = state.currentFilters.tags.includes(String(tag));
-        tagsContainer.innerHTML += `
-          <input type="checkbox" value="${tag}" id="${inputId}" ${isChecked ? 'checked' : ''}>
-          <label for="${inputId}">
-            <span class="pill-box">${isChecked ? '✓' : ''}</span> ${tag} <span class="pill-count">(${count})</span>
-          </label>
-        `;
+  // --- Acquisition Method ---
+  setupPillFilter({
+    containerId: 'filter-acquisition',
+    sortSelectId: 'filter-acquisition-sort-select',
+    filterKey: 'acquisitionMethods',
+    idPrefix: 'acq',
+    dataExtractor: () => {
+      const acquisitionCounts = {};
+      const acquisitionMethods = new Set();
+      state.allGamePlatforms.forEach(gp => {
+        if (gp.acquisition_method) {
+          acquisitionMethods.add(gp.acquisition_method);
+          acquisitionCounts[gp.acquisition_method] = (acquisitionCounts[gp.acquisition_method] || 0) + 1;
+        }
       });
-      updatePillEventListeners('#filter-tags');
-    };
-
-    tagSortSelect.removeEventListener('change', renderTags);
-    tagSortSelect.addEventListener('change', renderTags);
-    renderTags();
-  }
+      return Array.from(acquisitionMethods).map(method => ({ id: method, name: method, count: acquisitionCounts[method] || 0 }));
+    }
+  });
 
   // --- Game Type ---
   const gameTypeContainer = document.getElementById('filter-game-type');
@@ -143,206 +184,119 @@ export async function populateFilterModal() {
     updatePillEventListeners('#filter-game-type');
   }
 
-  // --- ESRB Rating ---
-  const esrbContainer = document.getElementById('filter-esrb-rating');
-  if (esrbContainer) {
-    esrbContainer.innerHTML = '';
-    const ratings = ['E', 'E10+', 'T', 'M', 'AO', 'RP'];
-    const ratingCounts = {};
-    state.allGames.forEach(game => {
-      if (game.esrb_rating) {
-        ratingCounts[game.esrb_rating] = (ratingCounts[game.esrb_rating] || 0) + 1;
-      }
+  // --- Manufacturer ---
+  const manufacturerContainer = document.getElementById('filter-manufacturer');
+  if (manufacturerContainer) {
+    const platformCounts = state.allGamePlatforms.reduce((acc, gp) => {
+      acc[gp.platform_id] = (acc[gp.platform_id] || 0) + 1;
+      return acc;
+    }, {});
+    const manufacturers = new Set();
+    state.allPlatforms.forEach(p => {
+      if (p.manufacturer) manufacturers.add(p.manufacturer);
     });
-    
-    ratings.forEach(rating => {
-      const count = ratingCounts[rating] || 0;
-      const inputId = `filter-esrb-${rating.replace(/[^a-zA-Z0-9]/g, '')}`;
-      const isChecked = state.currentFilters.esrbRatings.includes(rating);
-      esrbContainer.innerHTML += `
-        <input type="checkbox" value="${rating}" id="${inputId}" ${isChecked ? 'checked' : ''}>
+
+    manufacturerContainer.innerHTML = '';
+    const sortedManufacturers = Array.from(manufacturers).sort((a, b) => a.localeCompare(b));
+    // Note: Manufacturer doesn't have a count or sort select in this implementation
+    sortedManufacturers.forEach(m => {
+      const inputId = `filter-manu-${m.replace(/[^a-zA-Z0-9]/g, '')}`;
+      const isChecked = state.currentFilters.manufacturers.includes(m);
+      manufacturerContainer.innerHTML += `
+        <input type="checkbox" value="${m}" id="${inputId}" ${isChecked ? 'checked' : ''}>
         <label for="${inputId}">
-          <span class="pill-box">${isChecked ? '✓' : ''}</span> ${rating} <span class="pill-count">(${count})</span>
+          <span class="pill-box">${isChecked ? '✓' : ''}</span> ${m}
         </label>
       `;
     });
-    updatePillEventListeners('#filter-esrb-rating');
+    updatePillEventListeners('#filter-manufacturer');
   }
 
-  // --- Genres ---
-  const genresContainer = document.getElementById('filter-genres');
-  const genreSortSelect = document.getElementById('filter-genre-sort-select');
-  if (genresContainer && genreSortSelect) {
-    const { extractAllGenres } = await import('./filters.js');
-    const allGenres = extractAllGenres();
-    const genreCounts = {};
-    
-    state.allGames.forEach(game => {
-      if (game.genre) {
-        game.genre.split(',').forEach(g => {
-          const trimmed = g.trim();
-          if (trimmed) {
-            genreCounts[trimmed] = (genreCounts[trimmed] || 0) + 1;
-          }
-        });
-      }
-    });
+  /**
+   * Helper function to populate a pill-group container for a given game property.
+   * @param {string} property - The game property key (e.g., 'genre', 'developer').
+   * @param {string} containerId - The ID of the pill container element.
+   * @param {string} filterKey - The key in state.currentFilters (e.g., 'genres', 'developers').
+   * @param {string} prefix - A prefix for the input ID (e.g., 'genre').
+   */
+  function populatePillFilterFromProperty(property, containerId, filterKey, prefix) {
+    const container = document.getElementById(containerId);
+    const sortSelect = document.querySelector(`.filter-sort-select[data-target="${containerId}"]`);
 
-    const renderGenres = () => {
-      genresContainer.innerHTML = '';
-      let sortedGenres = [...allGenres];
-      const sortMethod = genreSortSelect.value;
+    if (!container) return;
 
-      sortedGenres.sort((a, b) => {
-        const countA = genreCounts[a] || 0;
-        const countB = genreCounts[b] || 0;
-        switch (sortMethod) {
-          case 'name_desc': return b.localeCompare(a);
-          case 'count_asc': return countA - countB;
-          case 'count_desc': return countB - countA;
-          case 'name_asc':
-          default: return a.localeCompare(b);
+    // If there's a sort select, use the generic helper. Otherwise, do a simple render.
+    if (sortSelect) {
+      setupPillFilter({
+        containerId: containerId,
+        sortSelectId: sortSelect.id, // We need an ID for the helper
+        filterKey: filterKey,
+        idPrefix: prefix,
+        dataExtractor: () => {
+          const valueCounts = {};
+          const allValues = new Set();
+          state.allGames.forEach(g => {
+            if (g[property]) {
+              g[property].split(',').map(val => val.trim()).filter(Boolean).forEach(val => {
+                allValues.add(val);
+                valueCounts[val] = (valueCounts[val] || 0) + 1;
+              });
+            }
+          });
+          return Array.from(allValues).map(val => ({ id: val, name: val, count: valueCounts[val] || 0 }));
         }
       });
-
-      sortedGenres.forEach(genre => {
-        const count = genreCounts[genre] || 0;
-        const inputId = `filter-genre-${genre.replace(/[^a-zA-Z0-9]/g, '')}`;
-        const isChecked = state.currentFilters.genres.includes(genre);
-        genresContainer.innerHTML += `
-          <input type="checkbox" value="${genre}" id="${inputId}" ${isChecked ? 'checked' : ''}>
-          <label for="${inputId}">
-            <span class="pill-box">${isChecked ? '✓' : ''}</span> ${genre} <span class="pill-count">(${count})</span>
-          </label>
-        `;
-      });
-      updatePillEventListeners('#filter-genres');
-    };
-
-    genreSortSelect.removeEventListener('change', renderGenres);
-    genreSortSelect.addEventListener('change', renderGenres);
-    renderGenres();
+    }
   }
 
-  // --- Target Audiences ---
-  const audiencesContainer = document.getElementById('filter-audiences');
-  const audienceSortSelect = document.getElementById('filter-audience-sort-select');
-  if (audiencesContainer && audienceSortSelect) {
-    const { extractAllAudiences } = await import('./filters.js');
-    const allAudiences = extractAllAudiences();
-    const audienceCounts = {};
-    
-    state.allGames.forEach(game => {
-      if (game.target_audience) {
-        game.target_audience.split(',').forEach(a => {
-          const trimmed = a.trim();
-          if (trimmed) {
-            audienceCounts[trimmed] = (audienceCounts[trimmed] || 0) + 1;
-          }
-        });
-      }
+  // --- Populate all the new text-based filters ---
+  // Assign unique IDs to the new sort selects so the helper can find them
+  document.querySelectorAll('.filter-sort-select').forEach((sel, i) => {
+    if (!sel.id) sel.id = `filter-sort-select-${i}`;
+  });
+
+  populatePillFilterFromProperty('genre', 'filter-genre', 'genres', 'genre');
+  populatePillFilterFromProperty('developer', 'filter-developer', 'developers', 'dev');
+  populatePillFilterFromProperty('publisher', 'filter-publisher', 'publishers', 'pub');
+
+  // These filters don't have sorting, so we render them manually.
+  const renderSimplePillFilter = (property, containerId, filterKey, prefix) => {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const values = new Set(state.allGames.flatMap(g => g[property] ? g[property].split(',').map(v => v.trim()) : []).filter(Boolean));
+    container.innerHTML = '';
+    Array.from(values).sort().forEach(val => {
+      const inputId = `filter-${prefix}-${val.replace(/[^a-zA-Z0-9]/g, '')}`;
+      const isChecked = state.currentFilters[filterKey]?.includes(val);
+      container.innerHTML += `
+        <input type="checkbox" value="${val}" id="${inputId}" ${isChecked ? 'checked' : ''}>
+        <label for="${inputId}">
+          <span class="pill-box">${isChecked ? '✓' : ''}</span> ${val}
+        </label>
+      `;
     });
+    updatePillEventListeners(`#${containerId}`);
+  };
 
-    const renderAudiences = () => {
-      audiencesContainer.innerHTML = '';
-      let sortedAudiences = [...allAudiences];
-      const sortMethod = audienceSortSelect.value;
+  renderSimplePillFilter('esrb_rating', 'filter-esrb', 'esrbRatings', 'esrb');
+  renderSimplePillFilter('target_audience', 'filter-audience', 'targetAudiences', 'audience');
 
-      sortedAudiences.sort((a, b) => {
-        const countA = audienceCounts[a] || 0;
-        const countB = audienceCounts[b] || 0;
-        switch (sortMethod) {
-          case 'name_desc': return b.localeCompare(a);
-          case 'count_asc': return countA - countB;
-          case 'count_desc': return countB - countA;
-          case 'name_asc':
-          default: return a.localeCompare(b);
-        }
-      });
-
-      sortedAudiences.forEach(audience => {
-        const count = audienceCounts[audience] || 0;
-        const inputId = `filter-audience-${audience.replace(/[^a-zA-Z0-9]/g, '')}`;
-        const isChecked = state.currentFilters.targetAudiences.includes(audience);
-        audiencesContainer.innerHTML += `
-          <input type="checkbox" value="${audience}" id="${inputId}" ${isChecked ? 'checked' : ''}>
-          <label for="${inputId}">
-            <span class="pill-box">${isChecked ? '✓' : ''}</span> ${audience} <span class="pill-count">(${count})</span>
-          </label>
-        `;
-      });
-      updatePillEventListeners('#filter-audiences');
-    };
-
-    audienceSortSelect.removeEventListener('change', renderAudiences);
-    audienceSortSelect.addEventListener('change', renderAudiences);
-    renderAudiences();
-  }
-
-  // --- Acquisition Method ---
-  const acquisitionContainer = document.getElementById('filter-acquisition');
-  const acquisitionSortSelect = document.getElementById('filter-acquisition-sort-select');
-  if (acquisitionContainer && acquisitionSortSelect) {
-    const acquisitionCounts = {};
-    const acquisitionMethods = new Set();
-    state.allGamePlatforms.forEach(gp => {
-      if (gp.acquisition_method) {
-        acquisitionMethods.add(gp.acquisition_method);
-        acquisitionCounts[gp.acquisition_method] = (acquisitionCounts[gp.acquisition_method] || 0) + 1;
-      }
-    });
-
-    const renderAcquisitionMethods = () => {
-      acquisitionContainer.innerHTML = '';
-      let sortedMethods = Array.from(acquisitionMethods);
-      const sortMethod = acquisitionSortSelect.value;
-
-      sortedMethods.sort((a, b) => {
-        const countA = acquisitionCounts[a] || 0;
-        const countB = acquisitionCounts[b] || 0;
-        switch (sortMethod) {
-          case 'name_desc': return b.localeCompare(a);
-          case 'count_asc': return countA - countB;
-          case 'count_desc': return countB - countA;
-          case 'name_asc':
-          default: return a.localeCompare(b);
-        }
-      });
-
-      sortedMethods.forEach(method => {
-        const count = acquisitionCounts[method] || 0;
-        const inputId = `filter-acq-${method.replace(/[^a-zA-Z0-9]/g, '')}`;
-        const isChecked = state.currentFilters.acquisitionMethods.includes(method);
-        acquisitionContainer.innerHTML += `
-          <input type="checkbox" value="${method}" id="${inputId}" ${isChecked ? 'checked' : ''}>
-          <label for="${inputId}">
-            <span class="pill-box">${isChecked ? '✓' : ''}</span> ${method} <span class="pill-count">(${count})</span>
-          </label>
-        `;
-      });
-      updatePillEventListeners('#filter-acquisition');
-    };
-
-    acquisitionSortSelect.removeEventListener('change', renderAcquisitionMethods);
-    acquisitionSortSelect.addEventListener('change', renderAcquisitionMethods);
-    renderAcquisitionMethods();
-  }
-
-  // --- Helper to wire up pill checkmark logic ---
-  function updatePillEventListeners(containerSelector) {
-    document.querySelectorAll(`${containerSelector} input[type="checkbox"]`).forEach(checkbox => {
-      // This is a bit inefficient as it re-adds listeners, but it's simple and effective for now.
-      // A more robust solution would use event delegation.
-      checkbox.addEventListener('change', (e) => {
-        const box = e.target.nextElementSibling.querySelector('.pill-box');
-        if (box) box.textContent = e.target.checked ? '✓' : '';
-      });
-    });
-  }
-
-  // --- Populate other filter fields ---
+  // --- Populate other filter fields (keyword, year) ---
   const keywordInput = document.getElementById('filter-keyword');
   if (keywordInput) keywordInput.value = state.currentFilters.keyword;
+
+  // Initialize autocomplete for the filter modal's keyword input
+  const filterAutocompleteResults = document.getElementById('filter-autocomplete-results');
+  if (keywordInput && filterAutocompleteResults) {
+    initAutocomplete(keywordInput, filterAutocompleteResults, {
+      onSelect: (item) => {
+        keywordInput.value = item.dataset.name;
+        clearAutocomplete(filterAutocompleteResults);
+      },
+      // No onEnter, as enter should submit the filter form.
+      footerText: 'Select a suggestion or press Enter to filter.'
+    });
+  }
 
   const modeAnd = document.querySelector('input[name="platform_mode"][value="and"]');
   const modeOr = document.querySelector('input[name="platform_mode"][value="or"]');
@@ -353,6 +307,10 @@ export async function populateFilterModal() {
       state.platformFilterAnd ? (modeAnd.checked = true) : (modeOr.checked = true);
     }
   }
+  const yearMinInput = document.getElementById('filter-year-min');
+  const yearMaxInput = document.getElementById('filter-year-max');
+  if (yearMinInput) yearMinInput.value = state.currentFilters.releaseYearMin || '';
+  if (yearMaxInput) yearMaxInput.value = state.currentFilters.releaseYearMax || '';
 }
 
 export async function populateAddToPlatformForm() {
@@ -529,6 +487,41 @@ export async function populateGamePlatformsList(gameId) {
 }
 
 /**
+ * Resets the game modal to its default state for adding or editing a single game.
+ * This function cleans up any UI modifications left over from bulk edit mode.
+ */
+export function resetGameModalUI() {
+  const formGame = document.getElementById('form-game');
+
+  // Remove ALL bulk-edit enabler checkboxes from labels and re-enable fields.
+  formGame.querySelectorAll('label').forEach(label => {
+    // Use querySelectorAll to find and remove all stacked checkboxes
+    label.querySelectorAll('.bulk-edit-enabler').forEach(cb => cb.remove());
+    label.classList.remove('bulk-edit-field');
+
+    const input = label.querySelector('input, textarea');
+    if (input) {
+      input.disabled = false;
+    }
+  });
+
+  // Also remove enabler checkboxes from radio group containers.
+  formGame.querySelectorAll('.inline-checkboxes').forEach(container => {
+    container.querySelectorAll('.bulk-edit-enabler').forEach(cb => cb.remove());
+    container.classList.remove('bulk-edit-field');
+  });
+
+  formGame.querySelectorAll('.inline-radios input[type="radio"]').forEach(radio => {
+    radio.disabled = false;
+  });
+
+  // Restore original placeholders if they were changed for bulk edit.
+  formGame.querySelectorAll('[data-original-placeholder]').forEach(input => {
+    input.placeholder = input.getAttribute('data-original-placeholder');
+  });
+}
+
+/**
  * Shows the game modal for editing a single game.
  * @param {string} gameId - The ID of the game to edit.
  * @param {boolean} [doOpen=true] - Whether to open the modal after populating.
@@ -550,6 +543,9 @@ export async function showEditGameModal(gameId, doOpen = true, isBulkEdit = fals
   const formGame = document.getElementById('form-game');
   const modalGame = document.getElementById('modal-game');
 
+  // Always reset the UI to a clean state before populating
+  resetGameModalUI();
+
   formGame.reset();
   // Set button text for "Edit" mode
   formGame.querySelector('button[type="submit"]').textContent = 'Save & Close';
@@ -561,30 +557,21 @@ export async function showEditGameModal(gameId, doOpen = true, isBulkEdit = fals
   formGame.querySelector('input[name="cover_image_url"]').value = game.cover_image_url || '';
   formGame.querySelector('input[name="trailer_url"]').value = game.trailer_url || '';
   formGame.querySelector('input[name="tags"]').value = (game.tags || []).join(', ');
-  
   // New fields
   formGame.querySelector('input[name="igdb_id"]').value = game.igdb_id || '';
-  formGame.querySelector('select[name="esrb_rating"]').value = game.esrb_rating || '';
+  formGame.querySelector('input[name="esrb_rating"]').value = game.esrb_rating || '';
   formGame.querySelector('input[name="genre"]').value = game.genre || '';
   formGame.querySelector('input[name="target_audience"]').value = game.target_audience || '';
-  formGame.querySelector('input[name="developers"]').value = (game.developers || []).join(', ');
-  formGame.querySelector('input[name="publishers"]').value = (game.publishers || []).join(', ');
+  formGame.querySelector('input[name="developer"]').value = game.developer || '';
+  formGame.querySelector('input[name="publisher"]').value = game.publisher || '';
   formGame.querySelector('textarea[name="plot_synopsis"]').value = game.plot_synopsis || '';
   formGame.querySelector('textarea[name="notes"]').value = game.notes || '';
 
-  // --- Cleanup placeholders from bulk edit mode ---
-  if (!isBulkEdit) {
-    const fieldsToClean = ['description', 'release_year', 'cover_image_url', 'trailer_url', 'tags'];
-    fieldsToClean.forEach(field => {
-      const input = formGame.querySelector(`[name="${field}"]`);
-      if (input) input.placeholder = input.getAttribute('data-original-placeholder') || '';
-    });
-  }
-
-  const gameType = game.is_derived_work ? 'derived' : (game.is_sequel ? 'sequel' : 'original');
-  formGame.querySelector(`input[name="game_type"][value="${gameType}"]`).checked = true;
+  // Set the checkboxes based on game properties
+  formGame.querySelector('input[name="is_derived_work"]').checked = !!game.is_derived_work;
+  formGame.querySelector('input[name="is_sequel"]').checked = !!game.is_sequel;
   const linkSection = document.getElementById('link-game-section');
-  linkSection.style.display = gameType !== 'original' ? 'block' : 'none';
+  linkSection.style.display = (game.is_derived_work || game.is_sequel) ? 'block' : 'none';
   if (game.related_game_id) {
     formGame.querySelector('input[name="related_game_id"]').value = game.related_game_id;
   }
@@ -596,7 +583,7 @@ export async function showEditGameModal(gameId, doOpen = true, isBulkEdit = fals
   const actionButtons = formGame.querySelector('.btn-clone').parentElement;
   actionButtons.style.display = isBulkEdit ? 'none' : 'flex';
   // Hide/show elements based on mode
-  formGame.querySelector('.inline-radios').style.display = isBulkEdit ? 'none' : 'flex';
+  formGame.querySelector('.inline-checkboxes').style.display = 'flex';
   document.getElementById('bulk-edit-specific-fields').style.display = isBulkEdit ? 'block' : 'none';
   document.getElementById('game-platforms-section').style.display = isBulkEdit ? 'none' : 'block';
 
@@ -607,13 +594,12 @@ export async function showEditGameModal(gameId, doOpen = true, isBulkEdit = fals
 
   // Add checkboxes for bulk edit mode
   formGame.querySelectorAll('label').forEach(label => {
-    const input = label.querySelector('input[type="text"], input[type="number"], textarea, input[type="radio"]');
+    const input = label.querySelector('input[type="text"], input[type="number"], textarea');
     if (input && input.name !== 'name') { // Exclude game title
-      const existingCheckbox = label.querySelector('.bulk-edit-enabler');
-      if (existingCheckbox) existingCheckbox.remove();
-
       if (isBulkEdit) {
         const checkbox = document.createElement('input');
+        // Check if a checkbox already exists to prevent stacking (belt-and-suspenders)
+        if (label.querySelector('.bulk-edit-enabler')) return;
         checkbox.type = 'checkbox';
         checkbox.className = 'bulk-edit-enabler';
         checkbox.dataset.enables = input.name;
@@ -633,14 +619,37 @@ export async function showEditGameModal(gameId, doOpen = true, isBulkEdit = fals
         checkbox.addEventListener('change', (e) => {
           if (input) input.disabled = !e.target.checked;
         });
-      } else {
-        // Cleanup for non-bulk mode
-        if (existingCheckbox) existingCheckbox.remove();
-        label.classList.remove('bulk-edit-field');
-        if (input) input.disabled = false;
       }
     }
   });
+
+  // Special handling for radio button groups in bulk edit
+  if (isBulkEdit) {
+    formGame.querySelectorAll('.inline-checkboxes').forEach(cbContainer => {
+      const firstCb = cbContainer.querySelector('input[type="checkbox"]');
+      if (!firstCb) return;
+
+      const fieldName = 'game_type_group'; // Use a generic identifier for the group
+      const labelSpan = cbContainer.querySelector('span');
+      if (!labelSpan) return;
+
+      // Check if a checkbox already exists
+      if (cbContainer.querySelector('.bulk-edit-enabler')) return;
+
+      const enablerCheckbox = document.createElement('input');
+      enablerCheckbox.type = 'checkbox';
+      enablerCheckbox.className = 'bulk-edit-enabler';
+      enablerCheckbox.dataset.enables = fieldName;
+      cbContainer.classList.add('bulk-edit-field');
+      cbContainer.prepend(enablerCheckbox);
+
+      const checkboxesInGroup = cbContainer.querySelectorAll(`input[type="checkbox"]:not(.bulk-edit-enabler)`);
+      checkboxesInGroup.forEach(cb => cb.disabled = true);
+      enablerCheckbox.addEventListener('change', (e) => {
+        checkboxesInGroup.forEach(cb => cb.disabled = !e.target.checked);
+      });
+    });
+  }
 
   if (doOpen) openModal(modalGame);
 }
@@ -658,51 +667,53 @@ export async function showBulkEditGameModal() {
   submitBtn.textContent = `Update ${selectedIds.size} Game(s)`;
 
   // --- Create and inject bulk-edit specific fields ---
-  const specificFieldsContainer = document.getElementById('bulk-edit-specific-fields');
-  specificFieldsContainer.innerHTML = `
-    <div class="bulk-edit-field">
-      <input type="checkbox" class="bulk-edit-enabler" data-enables="is_derived_work">
-      <span>Is Remake/Remaster</span>
-      <div class="inline-radios" data-radio-group="is_derived_work">
-        <label><input type="radio" name="is_derived_work" value="true" disabled> Yes</label>
-        <label><input type="radio" name="is_derived_work" value="false" disabled> No</label>
-      </div>
-    </div>
-    <div class="bulk-edit-field">
-      <input type="checkbox" class="bulk-edit-enabler" data-enables="is_sequel">
-      <span>Is Sequel</span>
-      <div class="inline-radios" data-radio-group="is_sequel">
-        <label><input type="radio" name="is_sequel" value="true" disabled> Yes</label>
-        <label><input type="radio" name="is_sequel" value="false" disabled> No</label>
-      </div>
-    </div>
-  `;
-  // Wire up the new fields
-  specificFieldsContainer.querySelectorAll('.bulk-edit-enabler').forEach(enabler => {
-    enabler.addEventListener('change', (e) => {
-      const fieldName = e.target.dataset.enables;
-      specificFieldsContainer.querySelectorAll(`input[name="${fieldName}"]`).forEach(radio => radio.disabled = !e.target.checked);
-    });
-  });
+  document.getElementById('bulk-edit-specific-fields').innerHTML = ''; // Clear this now-unused container
   
   // Set placeholder text for fields
-  const games = Array.from(selectedIds).map(id => state.allGames.find(g => String(g.id) === id));
-  const fields = ['description', 'release_year', 'cover_image_url', 'trailer_url', 'tags'];
+  const games = Array.from(selectedIds).map(id => state.allGames.find(g => String(g.id) === id)).filter(Boolean);
+  const fields = [
+    'description', 'release_year', 'cover_image_url', 'trailer_url', 'tags',
+    'genre', 'esrb_rating', 'target_audience', 'developer', 'publisher',
+    'plot_synopsis', 'notes', 'igdb_id'
+  ];
 
   fields.forEach(field => {
     const input = formGame.querySelector(`[name="${field}"]`);
+    if (!input) return;
+
     const firstValue = games[0]?.[field];
     const allSame = games.every(g => JSON.stringify(g[field]) === JSON.stringify(firstValue));
 
+    // Store original placeholder before overwriting, if it's not already stored
+    if (!input.hasAttribute('data-original-placeholder')) {
+      input.setAttribute('data-original-placeholder', input.placeholder);
+    }
+
     if (!allSame) {
       input.placeholder = 'Multiple values - will be overwritten.';
+      input.value = ''; // Clear the input value if values differ
     } else {
-      // Store original placeholder before overwriting, if it's not already stored
-      if (!input.hasAttribute('data-original-placeholder')) {
-        input.setAttribute('data-original-placeholder', input.placeholder);
-      }
+      // Pre-populate the field with the common value.
+      input.value = (field === 'tags' && Array.isArray(firstValue)) ? firstValue.join(', ') : (firstValue || '');
     }
   });
+
+  // --- Pre-populate boolean radio buttons (is_derived_work, is_sequel) ---
+  const firstGame = games[0];
+  if (firstGame) {
+    const allSameDerived = games.every(g => g.is_derived_work === firstGame.is_derived_work);
+    const allSameSequel = games.every(g => g.is_sequel === firstGame.is_sequel);
+
+    // Only pre-populate if the state is consistent across all selected games.
+    // If it's a mix (some are sequels, some not), leave the checkboxes blank.
+    if (allSameDerived && allSameSequel) { 
+      const derivedCb = formGame.querySelector('input[name="is_derived_work"]');
+      const sequelCb = formGame.querySelector('input[name="is_sequel"]');
+
+      derivedCb.checked = !!firstGame.is_derived_work;
+      sequelCb.checked = !!firstGame.is_sequel;
+    }
+  }
 }
 
 
@@ -724,12 +735,10 @@ export function showEditPlatformModal(platformId, doOpen = true) {
   formPlatform.querySelector('input[name="icon_url"]').value = platform.icon_url || '';
   formPlatform.querySelector('input[name="image_url"]').value = platform.image_url || '';
   formPlatform.querySelector('input[name="year_acquired"]').value = platform.year_acquired || '';
-  formPlatform.querySelector('input[name="supports_digital"]').checked = !!platform.supports_digital;
-  formPlatform.querySelector('input[name="supports_physical"]').checked = !!platform.supports_physical;
-  
-  // New fields
   formPlatform.querySelector('input[name="generation"]').value = platform.generation || '';
   formPlatform.querySelector('input[name="manufacturer"]').value = platform.manufacturer || '';
+  formPlatform.querySelector('input[name="supports_digital"]').checked = !!platform.supports_digital;
+  formPlatform.querySelector('input[name="supports_physical"]').checked = !!platform.supports_physical;
 
   // Show clone/delete buttons for "Edit" mode
   formPlatform.querySelector('.btn-clone').style.display = 'inline-block';
