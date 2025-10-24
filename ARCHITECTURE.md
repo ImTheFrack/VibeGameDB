@@ -1,8 +1,9 @@
-# Frontend CRUD Architecture
+Frontend CRUD Architecture
+========================
 
-## Data Flow Diagram
+Data Flow Diagram
+-----------------
 
-```
 ┌──────────────────────────────────────────────────────────────────┐
 │                        Browser (Frontend)                        │
 │                                                                  │
@@ -100,13 +101,12 @@
         │  - game_platforms (id, game_id, platform_id,  │
         │    is_digital, acquisition_method)            │
         └───────────────────────────────────────────────┘
-```
 
-## Component Interactions
+Component Interactions
+----------------------
 
-### Adding a Game
-
-```
+Adding a Game
+-------------
 User clicks "Add Game"
     ↓
 btnAddGame.addEventListener('click', async () => {
@@ -144,11 +144,9 @@ fetchGames()  ← Refreshes game list
 renderGames(data) updates display grid
     ↓
 User sees new game in the list
-```
 
-### Adding a Platform
-
-```
+Adding a Platform
+-----------------
 User clicks "Add Platform"
     ↓
 btnAddPlatform.addEventListener('click', () => {
@@ -162,11 +160,11 @@ User fills form and clicks "Save"
     ↓
 formPlatform.addEventListener('submit', async (e) => {
     e.preventDefault()
-    const platformData = { 
-        name, 
-        supports_digital, 
+    const platformData = {
+        name,
+        supports_digital,
         supports_physical,
-        icon_url, 
+        icon_url,
         image_url,
         year_acquired,
         ...
@@ -195,11 +193,9 @@ fetchPlatforms()  ← Refreshes platform list
 renderPlatforms(data) updates display grid
     ↓
 User sees new platform in the list
-```
 
-### Adding a Game to a Platform (NEW)
-
-```
+Adding a Game to a Platform (NEW)
+---------------------------------
 User clicks "Add Platform" button on game card
     ↓
 addToPlat.addEventListener('click', async (e) => {
@@ -248,13 +244,11 @@ fetchGames()  ← Refreshes game list with new platform link
 renderGames(data) updates display grid
     ↓
 User sees game card now shows the new platform with format indicator
-```
 
-### Bulk Editing Workflow
-
+Bulk Editing Workflow
+---------------------
 The application supports bulk operations on games, allowing users to edit, delete, or manage platform associations for multiple items at once.
 
-```
 User clicks "Select Multiple"
     ↓
 state.selection.enabled = true
@@ -289,37 +283,34 @@ _bulk_operations() iterates through IDs and performs the action
 Returns { message: "Successfully processed X of Y items." }
     ↓
 Frontend receives response, closes modal, and refreshes data
-```
 
-#### Bulk Field Editing
-
+Bulk Field Editing
+------------------
 Editing specific fields (like tags or release year) is a special two-step bulk action:
 
-1.  From the main bulk actions modal, the user clicks **"Edit Game Fields"**.
+1.  From the main bulk actions modal, the user clicks "Edit Game Fields".
 2.  The app calls `showBulkEditGameModal()`, which re-purposes the standard game form (`#modal-game`) for bulk editing.
     - Checkboxes appear next to each field.
     - A field is only included in the update if its corresponding checkbox is ticked.
     - On submit, the frontend sends an `edit_fields` action to the `/plugins/database_handler/bulk` endpoint.
 
-**Request (Bulk Edit Fields):**
-```json
+Request (Bulk Edit Fields):
 {
   "action": "edit_fields",
   "item_type": "game",
-  "ids": [1, 5, 12],
+  "ids":,
   "params": {
     "tags": ["updated-tag", "bulk-edited"],
     "release_year": 2024
   }
 }
-```
 
-## Request/Response Examples
+Request/Response Examples
+-------------------------
 
-### POST /plugins/database_handler/games
-
-**Request:**
-```json
+POST /plugins/database_handler/games
+------------------------------------
+Request:
 {
   "name": "Cyberpunk 2077",
   "description": "A story-driven, open world RPG",
@@ -330,10 +321,8 @@ Editing specific fields (like tags or release year) is a special two-step bulk a
   "related_game_id": null,
   "tags": ["action", "RPG", "sci-fi"]
 }
-```
 
-**Response (200):**
-```json
+Response (200):
 {
   "game": {
     "id": 1,
@@ -349,12 +338,10 @@ Editing specific fields (like tags or release year) is a special two-step bulk a
     "updated_at": "2025-01-15T10:30:00"
   }
 }
-```
 
-### POST /plugins/database_handler/platforms
-
-**Request:**
-```json
+POST /plugins/database_handler/platforms
+----------------------------------------
+Request:
 {
   "name": "PlayStation 5",
   "supports_digital": true,
@@ -364,10 +351,8 @@ Editing specific fields (like tags or release year) is a special two-step bulk a
   "description": "Sony's latest console",
   "year_acquired": 2021
 }
-```
 
-**Response (200):**
-```json
+Response (200):
 {
   "platform": {
     "id": "playstation_5",
@@ -382,22 +367,18 @@ Editing specific fields (like tags or release year) is a special two-step bulk a
     "updated_at": "2025-01-15T10:30:00"
   }
 }
-```
 
-### POST /plugins/database_handler/game_platforms (NEW)
-
-**Request:**
-```json
+POST /plugins/database_handler/game_platforms (NEW)
+---------------------------------------------------
+Request:
 {
   "game_id": 1,
   "platform_id": "steam",
   "is_digital": true,
   "acquisition_method": "bought"
 }
-```
 
-**Response (200):**
-```json
+Response (200):
 {
   "game_platform": {
     "id": 1,
@@ -409,143 +390,131 @@ Editing specific fields (like tags or release year) is a special two-step bulk a
     "updated_at": "2025-01-15T10:30:00"
   }
 }
-```
 
-## Error Handling
+Error Handling
+--------------
 
-### Invalid Request (Missing Required Field)
-
-**Request:**
-```json
+Invalid Request (Missing Required Field)
+----------------------------------------
+Request:
 {
   "description": "Missing name field"
 }
-```
 
-**Response (400):**
-```json
+Response (400):
 {
   "error": "name is required"
 }
-```
 
-**Frontend:**
-```javascript
+Frontend:
 if (!res.ok) {
     const err = await res.json()
     alert(`Error: ${err.error}`)  // Shows: "Error: name is required"
     return
 }
-```
 
-### Platform Format Constraint Violation
-
-**Request (trying to add physical copy to digital-only platform):**
-```json
+Platform Format Constraint Violation
+------------------------------------
+Request (trying to add physical copy to digital-only platform):
 {
   "game_id": 1,
   "platform_id": "steam",
   "is_digital": false,
   "acquisition_method": "bought"
 }
-```
 
-**Response (400):**
-```json
+Response (400):
 {
   "error": "platform steam does not support physical distribution"
 }
-```
 
-### Platform Must Support At Least One Format
-
-**Request (creating platform with no formats):**
-```json
+Platform Must Support At Least One Format
+-----------------------------------------
+Request (creating platform with no formats):
 {
   "name": "Invalid Platform",
   "supports_digital": false,
   "supports_physical": false
 }
-```
 
-**Response (400):**
-```json
+Response (400):
 {
   "error": "platform must support at least digital or physical"
 }
-```
 
-## Thread Safety
-
+Thread Safety
+-------------
 - Server uses `ThreadingHTTPServer` (one thread per request)
 - Database connections created per-request (thread-safe)
 - Plugin cache protected by `_PLUGIN_LOCK` (thread-safe)
 - No shared mutable state in handlers
 
-## Performance Considerations
-
+Performance Considerations
+--------------------------
 - Database queries are simple (no complex joins yet)
 - No pagination implemented (all games/platforms loaded at once)
 - No caching (fresh data on each fetch)
 - Images loaded from external URLs (can be slow)
 
-## Data Model Notes
+Data Model Notes
+----------------
 
-### Game-Platform Relationship
+Game-Platform Relationship
+--------------------------
 - Games are now independent entities (no embedded platforms array)
 - Platforms are independent entities (no embedded games array)
 - The `game_platforms` junction table manages the many-to-many relationship
 - Each entry specifies whether the copy is digital or physical
 - A game can appear multiple times on the same platform (once for digital, once for physical)
 
-### Cascade Behavior
+Cascade Behavior
+----------------
 - Deleting a game cascades to delete all its `game_platforms` entries
 - Deleting a platform cascades to delete all its `game_platforms` entries
 - Orphaned games (with no platforms) are allowed but should be handled carefully
 
-### Validation Rules
+Validation Rules
+----------------
 - Platform must support at least one format (digital or physical)
 - Can't create a digital game-platform link if platform doesn't support digital
 - Can't create a physical game-platform link if platform doesn't support physical
 - Duplicate game-platform-format combinations are prevented by UNIQUE constraint
 
-## Frontend Filtering System
+Frontend Filtering System
+-------------------------
 
-### Filter Architecture
-
+Filter Architecture
+-------------------
 The filtering system uses a centralized state object and modal-based UI:
 
-```javascript
 let currentFilters = {
     keyword: '',      // Text search in name/description
     platforms: [],    // Array of platform IDs
     tags: []          // Array of tag strings
 };
-```
 
-### Filter Types
+Filter Types
+------------
+1. Keyword Search: Case-insensitive search across game name and description
+2. Platform Filtering: Multi-select checkboxes for platforms (dynamically populated from database)
+3. Tag Filtering: Multi-select checkboxes for tags (dynamically extracted from all games)
 
-1. **Keyword Search**: Case-insensitive search across game name and description
-2. **Platform Filtering**: Multi-select checkboxes for platforms (dynamically populated from database)
-3. **Tag Filtering**: Multi-select checkboxes for tags (dynamically extracted from all games)
-
-### Filter Application Logic
-
-```javascript
+Filter Application Logic
+------------------------
 function applyFilters() {
     if (currentTab !== 'games') return;
-    
+
     let filtered = allGames;
-    
+
     // Filter by keyword (name or description)
     if (currentFilters.keyword) {
         const keyword = currentFilters.keyword.toLowerCase();
-        filtered = filtered.filter(game => 
+        filtered = filtered.filter(game =>
             game.name.toLowerCase().includes(keyword) ||
             (game.description && game.description.toLowerCase().includes(keyword))
         );
     }
-    
+
     // Filter by platforms (OR logic: game must be on at least one selected platform)
     if (currentFilters.platforms.length > 0) {
         filtered = filtered.filter(game => {
@@ -554,7 +523,7 @@ function applyFilters() {
             );
         });
     }
-    
+
     // Filter by tags (OR logic: game must have at least one selected tag)
     if (currentFilters.tags.length > 0) {
         filtered = filtered.filter(game => {
@@ -562,29 +531,28 @@ function applyFilters() {
             return currentFilters.tags.some(tag => gameTags.includes(tag));
         });
     }
-    
+
     renderGames(filtered);
 }
-```
 
-### Filter Modal UI
+Filter Modal UI
+---------------
+- Keyword Input: Text field for name/description search
+- Platform Checkboxes: Dynamically populated from `allPlatforms`
+- Tag Checkboxes: Dynamically extracted from `allGames` tags
+- Apply Button: Applies filters and closes modal
+- Clear All Button: Resets all filters to empty state
+- Active Filter Display: Shows summary of active filters below filter button
 
-- **Keyword Input**: Text field for name/description search
-- **Platform Checkboxes**: Dynamically populated from `allPlatforms`
-- **Tag Checkboxes**: Dynamically extracted from `allGames` tags
-- **Apply Button**: Applies filters and closes modal
-- **Clear All Button**: Resets all filters to empty state
-- **Active Filter Display**: Shows summary of active filters below filter button
-
-### Smart Tab Integration
-
+Smart Tab Integration
+---------------------
 - Filter button only appears on the Games tab
 - Filter button hidden on Platforms tab
 - Tab switching properly manages filter button visibility
 - Filters persist when switching tabs and returning to Games
 
-### Extensibility
-
+Extensibility
+-------------
 To add a new filter type:
 
 1. Add new property to `currentFilters` object
@@ -593,21 +561,21 @@ To add a new filter type:
 4. Add filter criteria to `applyFilters()` function
 5. Update `updateActiveFiltersDisplay()` to show new filter
 
-### Potential Future Filters
-
+Potential Future Filters
+------------------------
 - Acquisition method (bought, free, bundle, gift, subscription)
 - Remake/Remaster status (Original, Remake, Remaster)
 - Year acquired (date range)
 - Platform format (Digital/Physical)
 - Description length or other metadata
 
-## Frontend Display Controls System
+Frontend Display Controls System
+--------------------------------
 
-### Display Options Architecture
-
+Display Options Architecture
+----------------------------
 The display system allows users to customize which elements appear on game cards:
 
-```javascript
 let displayOptions = {
     show_cover: true,
     show_title: true,
@@ -615,31 +583,28 @@ let displayOptions = {
     show_tags: true,
     show_platforms: true
 };
-```
 
-### Display Modal UI
+Display Modal UI
+----------------
+- Checkboxes: One for each card element (cover, title, description, tags, platforms)
+- Apply Button: Applies display options and re-renders cards immediately
+- Reset Button: Restores all display options to default (all visible)
 
-- **Checkboxes**: One for each card element (cover, title, description, tags, platforms)
-- **Apply Button**: Applies display options and re-renders cards immediately
-- **Reset Button**: Restores all display options to default (all visible)
-
-### Display Application Logic
-
-```javascript
+Display Application Logic
+-------------------------
 function applyDisplayOptions() {
     renderGames(currentFilteredGames);
 }
-```
 
 The `renderGames()` function checks `displayOptions` when building each card and conditionally includes elements.
 
-### Visual Feedback
-
+Visual Feedback
+---------------
 - Display button shows a count when any option is hidden (similar to Filter button)
 - Active display state can be indicated with CSS class `.display-options-on`
 
-### Future Enhancements
-
+Future Enhancements
+-------------------
 - Persist `displayOptions` to localStorage so user preferences survive page reloads
 - Persist `displayOptions` to URL query parameters for shareable filter/display states
 - Add keyboard accessibility (Tab focus, Space/Enter to toggle)
@@ -647,8 +612,8 @@ The `renderGames()` function checks `displayOptions` when building each card and
 - Animate pill clicks with small visual feedback
 - Show active filters as removable chips near controls bar
 
-## Future Improvements
-
+Future Improvements
+-------------------
 1. Add pagination to game/platform lists
 2. Implement search/filter on backend
 3. Add database indexes for faster queries
