@@ -29,6 +29,8 @@ import csv
 import io
 import json
 import sqlite3
+import time
+import threading
 import os
 import re
 import urllib.request
@@ -44,8 +46,26 @@ except Exception:
         IGDB_CLIENT_SECRET = None
         IGDB_AUTH_URL = "https://id.twitch.tv/oauth2/token"
         IGDB_API_URL = "https://api.igdb.com/v4"
+        IGDB_RATE_LIMIT_PER_SECOND = 4
     config = _C()
 
+# --- IGDB Rate Limiting & Token Caching ---
+# A simple thread-safe rate limiter and token cache for IGDB API calls.
+_igdb_lock = threading.Lock()
+_igdb_last_call_time = 0.0
+_igdb_token_cache = {'token': None, 'expires_at': 0}
+
+def _rate_limit_igdb():
+    """Blocks to ensure we don't exceed the IGDB API rate limit."""
+    global _igdb_last_call_time
+    rate_limit = getattr(config, 'IGDB_RATE_LIMIT_PER_SECOND', 4)
+    if rate_limit <= 0: return
+    min_interval = 1.0 / rate_limit
+    with _igdb_lock:
+        elapsed = time.time() - _igdb_last_call_time
+        if elapsed < min_interval:
+            time.sleep(min_interval - elapsed)
+        _igdb_last_call_time = time.time()
 
 def _load_known_platforms() -> Dict[str, str]:
     """Load known platform names from data/plat.txt.
@@ -326,6 +346,12 @@ def _get_igdb_token():
     In a real app, this token should be cached until it expires.
     """
     print("[IGDB] Attempting to get IGDB auth token...")
+    # Check cache first
+    with _igdb_lock:
+        if _igdb_token_cache['token'] and time.time() < _igdb_token_cache['expires_at']:
+            print("[IGDB] Using cached token.")
+            return _igdb_token_cache['token'], None
+
     client_id = getattr(config, 'IGDB_CLIENT_ID', None)
     client_secret = getattr(config, 'IGDB_CLIENT_SECRET', None)
     auth_url = getattr(config, 'IGDB_AUTH_URL', None)
@@ -344,6 +370,7 @@ def _get_igdb_token():
     print(f"[IGDB] Auth request params (secret redacted): { {k:v for k,v in params.items() if k != 'client_secret'} }")
     data = urllib.parse.urlencode(params).encode('utf-8')
     req = urllib.request.Request(auth_url, data=data)
+    _rate_limit_igdb() # Apply rate limit before the call
 
     try:
         print(f"[IGDB] Making POST request to auth URL: {auth_url}")
@@ -354,7 +381,12 @@ def _get_igdb_token():
                 return None, err_msg
             result = json.loads(resp.read().decode('utf-8'))
             print(f"[IGDB] Successfully received token (expires in {result.get('expires_in')}s).")
-            return result.get('access_token'), None
+            token = result.get('access_token')
+            # Cache the new token with its expiry time (with a small buffer)
+            with _igdb_lock:
+                _igdb_token_cache['token'] = token
+                _igdb_token_cache['expires_at'] = time.time() + result.get('expires_in', 3600) - 60
+            return token, None
     except Exception as e:
         print(f"[IGDB] EXCEPTION during token fetch: {e}")
         return None, f"Error fetching IGDB token: {e}"
@@ -389,6 +421,7 @@ def _fetch_igdb_data(token: str, title: Optional[str] = None, igdb_id: Optional[
     print(f"[IGDB] API Request URL: {api_url}/games")
     print(f"[IGDB] API Request Body: {body}")
     req = urllib.request.Request(f"{api_url}/games", data=body.encode('utf-8'), headers=headers)
+    _rate_limit_igdb() # Apply rate limit before the call
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             if resp.status != 200:

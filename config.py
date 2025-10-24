@@ -34,6 +34,10 @@ IGDB_CLIENT_SECRET = "iplgi5j3awi6hkl4nzq3yf2ywverah"
 IGDB_AUTH_URL = "https://id.twitch.tv/oauth2/token"
 IGDB_API_URL = "https://api.igdb.com/v4"
 
+# Rate limit for IGDB API calls (requests per second). IGDB's official limit is 4.
+# It is recommended to stay at or below this value. Set to 0 to disable.
+IGDB_RATE_LIMIT_PER_SECOND = 4
+
 
 # --- Database Configuration ---
 # This points to the SQLite file we will use later. Keeping it in config avoids

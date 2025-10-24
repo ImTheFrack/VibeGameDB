@@ -530,6 +530,8 @@ export function showBulkMatchModal(multiMatchResults, onComplete) {
   table.className = 'bulk-match-table';
   const tbody = document.createElement('tbody');
 
+  let activeOptionsContainer = null; // Keep track of the currently open options popup
+  let activeTrigger = null; // Keep track of the trigger for the active options popup
   multiMatchResults.forEach(match => {
     const row = document.createElement('tr');
     if (match.gameId) {
@@ -575,13 +577,38 @@ export function showBulkMatchModal(multiMatchResults, onComplete) {
       <td><button class="btn btn-sm btn-apply-match">Apply</button></td>
     `;
     tbody.appendChild(row);
+
+    // --- New Scoped Event Listener Logic ---
+    const trigger = row.querySelector('.custom-select-selected-text');
+    const optionsContainer = row.querySelector('.custom-select-options');
+
+    trigger.addEventListener('click', (e) => {
+        e.stopPropagation(); // Prevent the document click listener from firing
+
+        // If another dropdown is open, close it first
+        if (activeOptionsContainer && activeOptionsContainer !== optionsContainer) {
+            activeOptionsContainer.style.display = 'none';
+            // No need to re-append, it's still a child of its original container
+        }
+
+        const isOpening = optionsContainer.style.display !== 'block';
+        if (isOpening) {
+            document.body.appendChild(optionsContainer);
+            const rect = trigger.getBoundingClientRect();
+            Object.assign(optionsContainer.style, { left: `${rect.left}px`, top: `${rect.bottom + 2}px`, width: `${rect.width}px` });
+            optionsContainer.style.display = 'block';
+            activeOptionsContainer = optionsContainer;
+            activeTrigger = trigger;
+        } else {
+            optionsContainer.style.display = 'none';
+            activeOptionsContainer = null;
+        }
+    });
   });
 
   table.appendChild(tbody);
   container.innerHTML = '';
   container.appendChild(table);
-
-  let activeSelectContainer = null; // Keep track of the currently open dropdown
 
   // Event handler for individual "Apply" buttons
   const applyMatch = async (row) => {
@@ -615,63 +642,34 @@ export function showBulkMatchModal(multiMatchResults, onComplete) {
     }
   };
 
-  // A single, robust event listener on the document to handle all dropdown interactions
+  // Simplified global handler for closing dropdowns and handling apply/select actions
   const documentClickHandler = (e) => {
-    const selectedText = e.target.closest('.custom-select-selected-text');
-    const option = e.target.closest('.custom-select-option');
-    const applyBtn = e.target.closest('.btn-apply-match');
+    const clickedOption = e.target.closest('.custom-select-option');
+    const clickedApplyBtn = e.target.closest('.btn-apply-match');
 
-    if (selectedText) {
-      const currentSelectContainer = selectedText.closest('.custom-select-container');
-      const isClosing = activeSelectContainer === currentSelectContainer;
+    if (clickedOption) {
+      // When an option is clicked, the activeTrigger holds the context of which dropdown is open.
+      // We find the container relative to that trigger.
+      const container = activeTrigger ? activeTrigger.closest('.custom-select-container') : null;
+      if (!container || !activeOptionsContainer) return;
 
-      // Close any currently open dropdown
-      if (activeSelectContainer) {
-        const oldOptions = document.body.querySelector('.custom-select-options');
-        if (oldOptions) {
-          oldOptions.style.display = 'none';
-          activeSelectContainer.appendChild(oldOptions);
-        }
-        activeSelectContainer = null;
-      }
+      const selectedDisplay = container.querySelector('.custom-select-selected-text');
+      container.dataset.selectedValue = clickedOption.dataset.value;
+      selectedDisplay.innerHTML = clickedOption.innerHTML;
 
-      // If we weren't closing the dropdown, it means we are opening it.
-      if (!isClosing) {
-        const optionsContainer = currentSelectContainer.querySelector('.custom-select-options');
-        if (!optionsContainer) return;
+      // Close the dropdown
+      const optionsPopup = clickedOption.parentElement; // The .custom-select-options div
+      optionsPopup.style.display = 'none';
+      // Re-attach the options popup to its original container in the table.
+      container.appendChild(optionsPopup);
 
-        if (activeSelectContainer && activeSelectContainer !== customSelectContainer) {
-          const oldOptions = activeSelectContainer.querySelector('.custom-select-options');
-          oldOptions.style.display = 'none';
-          activeSelectContainer.appendChild(oldOptions);
-        }
-        document.body.appendChild(optionsContainer);
-        const rect = selectedText.getBoundingClientRect();
-        Object.assign(optionsContainer.style, { left: `${rect.left}px`, top: `${rect.bottom + 2}px`, width: `${rect.width}px` });
-        optionsContainer.style.display = 'block';
-        activeSelectContainer = currentSelectContainer;
-      }
-    } else if (option) {
-      if (!activeSelectContainer) return;
-      const optionsContainer = option.parentElement;
-      const selectedDisplay = activeSelectContainer.querySelector('.custom-select-selected-text');
-      activeSelectContainer.dataset.selectedValue = option.dataset.value;
-      selectedDisplay.innerHTML = option.innerHTML;
-      optionsContainer.style.display = 'none';
-      activeSelectContainer.appendChild(optionsContainer);
-      activeSelectContainer = null;
-    } else if (applyBtn) {
+      activeOptionsContainer = null;
+    } else if (clickedApplyBtn) {
       applyMatch(e.target.closest('tr'));
-    } else {
-      // Click was outside any interactive element, close the active dropdown
-      if (activeSelectContainer) {
-        const options = activeSelectContainer.querySelector('.custom-select-options');
-        if (options) {
-          options.style.display = 'none';
-          activeSelectContainer.appendChild(options);
-          activeSelectContainer = null;
-        }
-      }
+    } else if (activeOptionsContainer && !e.target.closest('.custom-select-options')) {
+      // Click was outside of any open dropdown, so close it.
+      activeOptionsContainer.style.display = 'none';
+      activeOptionsContainer = null;
     }
   };
 
@@ -679,6 +677,12 @@ export function showBulkMatchModal(multiMatchResults, onComplete) {
   document.addEventListener('click', documentClickHandler);
   modal.addEventListener('close', () => {
     document.removeEventListener('click', documentClickHandler);
+    // Explicitly find and remove any orphaned dropdown from the body on modal close.
+    const openOptions = document.body.querySelector('.custom-select-options');
+    if (openOptions) {
+        // The simplest, most reliable cleanup is to just remove it from the DOM.
+        openOptions.remove();
+    }
     // Always call onComplete on close, passing null for selectedIgdbId and false for didSelect.
     if (onComplete) onComplete(null, false);
   }, { once: true });
