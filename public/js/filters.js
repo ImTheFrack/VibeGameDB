@@ -21,6 +21,50 @@ export function extractAllTags() {
   state.allTags = Array.from(tagSet).sort();
 }
 
+export function extractAllGenres() {
+  const genreSet = new Set();
+  state.allGames.forEach(game => {
+    if (game.genre) {
+      // Split by comma if multiple genres
+      game.genre.split(',').forEach(g => {
+        const trimmed = g.trim();
+        if (trimmed) genreSet.add(trimmed);
+      });
+    }
+  });
+  return Array.from(genreSet).sort();
+}
+
+export function extractAllAudiences() {
+  const audienceSet = new Set();
+  state.allGames.forEach(game => {
+    if (game.target_audience) {
+      // Split by comma if multiple audiences
+      game.target_audience.split(',').forEach(a => {
+        const trimmed = a.trim();
+        if (trimmed) audienceSet.add(trimmed);
+      });
+    }
+  });
+  return Array.from(audienceSet).sort();
+}
+
+export function extractAllGenerations() {
+  const genSet = new Set();
+  state.allPlatforms.forEach(platform => {
+    if (platform.generation) genSet.add(platform.generation);
+  });
+  return Array.from(genSet).sort();
+}
+
+export function extractAllManufacturers() {
+  const mfgSet = new Set();
+  state.allPlatforms.forEach(platform => {
+    if (platform.manufacturer) mfgSet.add(platform.manufacturer);
+  });
+  return Array.from(mfgSet).sort();
+}
+
 export function applyFilters() {
   if (state.currentTab !== 'games') return;
 
@@ -103,6 +147,63 @@ export function applyFilters() {
     });
   }
 
+  // ESRB Rating filter
+  if (currentFilters.esrbRatings.length > 0) {
+    filtered = filtered.filter(game => {
+      return currentFilters.esrbRatings.includes(game.esrb_rating);
+    });
+  }
+
+  // Genre filter (AND semantics - game must have all selected genres)
+  if (currentFilters.genres.length > 0) {
+    filtered = filtered.filter(game => {
+      if (!game.genre) return false;
+      const gameGenre = game.genre.toLowerCase();
+      return currentFilters.genres.every(genre => 
+        gameGenre.includes(genre.toLowerCase())
+      );
+    });
+  }
+
+  // Target Audience filter (OR semantics - game can match any selected audience)
+  if (currentFilters.targetAudiences.length > 0) {
+    filtered = filtered.filter(game => {
+      if (!game.target_audience) return false;
+      const gameAudience = game.target_audience.toLowerCase();
+      return currentFilters.targetAudiences.some(audience => 
+        gameAudience.includes(audience.toLowerCase())
+      );
+    });
+  }
+
+  // Platform Generation filter
+  if (currentFilters.platformGenerations.length > 0) {
+    const platformsWithGen = state.allPlatforms
+      .filter(p => currentFilters.platformGenerations.includes(p.generation))
+      .map(p => p.id);
+    
+    filtered = filtered.filter(game => {
+      return state.allGamePlatforms.some(gp => 
+        String(gp.game_id) === String(game.id) && 
+        platformsWithGen.includes(gp.platform_id)
+      );
+    });
+  }
+
+  // Platform Manufacturer filter
+  if (currentFilters.platformManufacturers.length > 0) {
+    const platformsWithMfg = state.allPlatforms
+      .filter(p => currentFilters.platformManufacturers.includes(p.manufacturer))
+      .map(p => p.id);
+    
+    filtered = filtered.filter(game => {
+      return state.allGamePlatforms.some(gp => 
+        String(gp.game_id) === String(game.id) && 
+        platformsWithMfg.includes(gp.platform_id)
+      );
+    });
+  }
+
   // Sorting
   if (sortSelect) {
     const sortMethod = sortSelect.value;
@@ -165,6 +266,11 @@ export function updateActiveFiltersDisplay() {
   if (Array.isArray(state.currentFilters.tags)) count += state.currentFilters.tags.length;
   if (Array.isArray(state.currentFilters.gameTypes)) count += state.currentFilters.gameTypes.length;
   if (Array.isArray(state.currentFilters.acquisitionMethods)) count += state.currentFilters.acquisitionMethods.length;
+  if (Array.isArray(state.currentFilters.esrbRatings)) count += state.currentFilters.esrbRatings.length;
+  if (Array.isArray(state.currentFilters.genres)) count += state.currentFilters.genres.length;
+  if (Array.isArray(state.currentFilters.targetAudiences)) count += state.currentFilters.targetAudiences.length;
+  if (Array.isArray(state.currentFilters.platformGenerations)) count += state.currentFilters.platformGenerations.length;
+  if (Array.isArray(state.currentFilters.platformManufacturers)) count += state.currentFilters.platformManufacturers.length;
 
   if (btn) {
     if (count > 0) {

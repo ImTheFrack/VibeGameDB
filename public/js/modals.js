@@ -143,6 +143,142 @@ export async function populateFilterModal() {
     updatePillEventListeners('#filter-game-type');
   }
 
+  // --- ESRB Rating ---
+  const esrbContainer = document.getElementById('filter-esrb-rating');
+  if (esrbContainer) {
+    esrbContainer.innerHTML = '';
+    const ratings = ['E', 'E10+', 'T', 'M', 'AO', 'RP'];
+    const ratingCounts = {};
+    state.allGames.forEach(game => {
+      if (game.esrb_rating) {
+        ratingCounts[game.esrb_rating] = (ratingCounts[game.esrb_rating] || 0) + 1;
+      }
+    });
+    
+    ratings.forEach(rating => {
+      const count = ratingCounts[rating] || 0;
+      const inputId = `filter-esrb-${rating.replace(/[^a-zA-Z0-9]/g, '')}`;
+      const isChecked = state.currentFilters.esrbRatings.includes(rating);
+      esrbContainer.innerHTML += `
+        <input type="checkbox" value="${rating}" id="${inputId}" ${isChecked ? 'checked' : ''}>
+        <label for="${inputId}">
+          <span class="pill-box">${isChecked ? '✓' : ''}</span> ${rating} <span class="pill-count">(${count})</span>
+        </label>
+      `;
+    });
+    updatePillEventListeners('#filter-esrb-rating');
+  }
+
+  // --- Genres ---
+  const genresContainer = document.getElementById('filter-genres');
+  const genreSortSelect = document.getElementById('filter-genre-sort-select');
+  if (genresContainer && genreSortSelect) {
+    const { extractAllGenres } = await import('./filters.js');
+    const allGenres = extractAllGenres();
+    const genreCounts = {};
+    
+    state.allGames.forEach(game => {
+      if (game.genre) {
+        game.genre.split(',').forEach(g => {
+          const trimmed = g.trim();
+          if (trimmed) {
+            genreCounts[trimmed] = (genreCounts[trimmed] || 0) + 1;
+          }
+        });
+      }
+    });
+
+    const renderGenres = () => {
+      genresContainer.innerHTML = '';
+      let sortedGenres = [...allGenres];
+      const sortMethod = genreSortSelect.value;
+
+      sortedGenres.sort((a, b) => {
+        const countA = genreCounts[a] || 0;
+        const countB = genreCounts[b] || 0;
+        switch (sortMethod) {
+          case 'name_desc': return b.localeCompare(a);
+          case 'count_asc': return countA - countB;
+          case 'count_desc': return countB - countA;
+          case 'name_asc':
+          default: return a.localeCompare(b);
+        }
+      });
+
+      sortedGenres.forEach(genre => {
+        const count = genreCounts[genre] || 0;
+        const inputId = `filter-genre-${genre.replace(/[^a-zA-Z0-9]/g, '')}`;
+        const isChecked = state.currentFilters.genres.includes(genre);
+        genresContainer.innerHTML += `
+          <input type="checkbox" value="${genre}" id="${inputId}" ${isChecked ? 'checked' : ''}>
+          <label for="${inputId}">
+            <span class="pill-box">${isChecked ? '✓' : ''}</span> ${genre} <span class="pill-count">(${count})</span>
+          </label>
+        `;
+      });
+      updatePillEventListeners('#filter-genres');
+    };
+
+    genreSortSelect.removeEventListener('change', renderGenres);
+    genreSortSelect.addEventListener('change', renderGenres);
+    renderGenres();
+  }
+
+  // --- Target Audiences ---
+  const audiencesContainer = document.getElementById('filter-audiences');
+  const audienceSortSelect = document.getElementById('filter-audience-sort-select');
+  if (audiencesContainer && audienceSortSelect) {
+    const { extractAllAudiences } = await import('./filters.js');
+    const allAudiences = extractAllAudiences();
+    const audienceCounts = {};
+    
+    state.allGames.forEach(game => {
+      if (game.target_audience) {
+        game.target_audience.split(',').forEach(a => {
+          const trimmed = a.trim();
+          if (trimmed) {
+            audienceCounts[trimmed] = (audienceCounts[trimmed] || 0) + 1;
+          }
+        });
+      }
+    });
+
+    const renderAudiences = () => {
+      audiencesContainer.innerHTML = '';
+      let sortedAudiences = [...allAudiences];
+      const sortMethod = audienceSortSelect.value;
+
+      sortedAudiences.sort((a, b) => {
+        const countA = audienceCounts[a] || 0;
+        const countB = audienceCounts[b] || 0;
+        switch (sortMethod) {
+          case 'name_desc': return b.localeCompare(a);
+          case 'count_asc': return countA - countB;
+          case 'count_desc': return countB - countA;
+          case 'name_asc':
+          default: return a.localeCompare(b);
+        }
+      });
+
+      sortedAudiences.forEach(audience => {
+        const count = audienceCounts[audience] || 0;
+        const inputId = `filter-audience-${audience.replace(/[^a-zA-Z0-9]/g, '')}`;
+        const isChecked = state.currentFilters.targetAudiences.includes(audience);
+        audiencesContainer.innerHTML += `
+          <input type="checkbox" value="${audience}" id="${inputId}" ${isChecked ? 'checked' : ''}>
+          <label for="${inputId}">
+            <span class="pill-box">${isChecked ? '✓' : ''}</span> ${audience} <span class="pill-count">(${count})</span>
+          </label>
+        `;
+      });
+      updatePillEventListeners('#filter-audiences');
+    };
+
+    audienceSortSelect.removeEventListener('change', renderAudiences);
+    audienceSortSelect.addEventListener('change', renderAudiences);
+    renderAudiences();
+  }
+
   // --- Acquisition Method ---
   const acquisitionContainer = document.getElementById('filter-acquisition');
   const acquisitionSortSelect = document.getElementById('filter-acquisition-sort-select');
@@ -425,6 +561,16 @@ export async function showEditGameModal(gameId, doOpen = true, isBulkEdit = fals
   formGame.querySelector('input[name="cover_image_url"]').value = game.cover_image_url || '';
   formGame.querySelector('input[name="trailer_url"]').value = game.trailer_url || '';
   formGame.querySelector('input[name="tags"]').value = (game.tags || []).join(', ');
+  
+  // New fields
+  formGame.querySelector('input[name="igdb_id"]').value = game.igdb_id || '';
+  formGame.querySelector('select[name="esrb_rating"]').value = game.esrb_rating || '';
+  formGame.querySelector('input[name="genre"]').value = game.genre || '';
+  formGame.querySelector('input[name="target_audience"]').value = game.target_audience || '';
+  formGame.querySelector('input[name="developers"]').value = (game.developers || []).join(', ');
+  formGame.querySelector('input[name="publishers"]').value = (game.publishers || []).join(', ');
+  formGame.querySelector('textarea[name="plot_synopsis"]').value = game.plot_synopsis || '';
+  formGame.querySelector('textarea[name="notes"]').value = game.notes || '';
 
   // --- Cleanup placeholders from bulk edit mode ---
   if (!isBulkEdit) {
@@ -580,6 +726,10 @@ export function showEditPlatformModal(platformId, doOpen = true) {
   formPlatform.querySelector('input[name="year_acquired"]').value = platform.year_acquired || '';
   formPlatform.querySelector('input[name="supports_digital"]').checked = !!platform.supports_digital;
   formPlatform.querySelector('input[name="supports_physical"]').checked = !!platform.supports_physical;
+  
+  // New fields
+  formPlatform.querySelector('input[name="generation"]').value = platform.generation || '';
+  formPlatform.querySelector('input[name="manufacturer"]').value = platform.manufacturer || '';
 
   // Show clone/delete buttons for "Edit" mode
   formPlatform.querySelector('.btn-clone').style.display = 'inline-block';

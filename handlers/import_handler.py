@@ -129,15 +129,32 @@ def _guess_mapping(headers: List[str], known_platforms: Optional[Dict[str, str]]
             mapping[h] = 'description'
         elif 'cover' in lower or 'image' in lower:
             mapping[h] = 'cover_image_url'
-        elif 'trailer' in lower or 'youtube' in lower: mapping[h] = 'trailer_url'
+        elif 'trailer' in lower or 'youtube' in lower: 
+            mapping[h] = 'trailer_url'
         elif 'remake' in lower or 'remaster' in lower:
             mapping[h] = 'is_derived_work'
         elif 'sequel' in lower:
             mapping[h] = 'is_sequel'
-        elif 'tag' in lower or 'genre' in lower:
+        elif 'tag' in lower:
             mapping[h] = 'tags'
+        elif 'genre' in lower:
+            mapping[h] = 'genre'
         elif 'year' in lower or 'release' in lower:
             mapping[h] = 'release_year'
+        elif 'igdb' in lower:
+            mapping[h] = 'igdb_id'
+        elif 'esrb' in lower or 'rating' in lower:
+            mapping[h] = 'esrb_rating'
+        elif 'audience' in lower:
+            mapping[h] = 'target_audience'
+        elif 'developer' in lower:
+            mapping[h] = 'developers'
+        elif 'publisher' in lower:
+            mapping[h] = 'publishers'
+        elif 'plot' in lower or 'synopsis' in lower or 'story' in lower:
+            mapping[h] = 'plot_synopsis'
+        elif 'note' in lower or 'comment' in lower:
+            mapping[h] = 'notes'
         elif re.search(r'price|bought|free|acquisition', lower):
             # platform-level info often needs manual mapping
             mapping[h] = 'acquisition_hint'
@@ -174,10 +191,20 @@ def _coerce_value(field: str, value: str):
             return int(v) if v else None
         except ValueError:
             return None
+    if field == 'igdb_id':
+        try:
+            return int(v) if v else None
+        except ValueError:
+            return None
     if field == 'tags':
         # split on ; or ,
         parts = re.split(r'[;,]\s*', v) if v else []
         return [p for p in (p.strip() for p in parts) if p]
+    if field in ('developers', 'publishers'):
+        # These are stored as comma-separated strings in the DB
+        # but can be split on ; or , in CSV
+        parts = re.split(r'[;,]\s*', v) if v else []
+        return ','.join([p for p in (p.strip() for p in parts) if p])
     return v
 
 
