@@ -173,7 +173,13 @@
                         <button type="button" class="btn" data-close>Cancel</button>
                     </div>
                     <div class="button-group">
-                        <button type="button" id="btn-pull-igdb" class="btn">Pull from IGDB</button>
+                        <div class="igdb-pull-controls">
+                            <button type="button" id="btn-pull-igdb" class="btn">Pull from IGDB</button>
+                            <div class="inline-radios" style="margin-left: 8px;">
+                                <label><input type="radio" name="igdb_pull_method" value="name" checked> Name</label>
+                                <label><input type="radio" name="igdb_pull_method" value="id"> ID</label>
+                            </div>
+                        </div>
                         <button type="button" class="btn btn-clone">Clone</button>
                         <button type="button" class="btn btn-delete">Delete</button>
                     </div>
@@ -320,7 +326,13 @@
                             <!-- JS will populate platforms -->
                         </select>
                     </div>
-                    <button id="bulk-btn-pull-igdb" class="btn" data-action="pull_igdb">Pull from IGDB</button>
+                    <div class="bulk-action-button-row">
+                        <button id="bulk-btn-pull-igdb" class="btn" data-action="pull_igdb">Pull from IGDB</button>
+                        <div class="inline-radios" style="margin-left: 8px;">
+                            <label><input type="radio" name="bulk_igdb_pull_method" value="name" checked> Name</label>
+                            <label><input type="radio" name="bulk_igdb_pull_method" value="id"> ID</label>
+                        </div>
+                    </div>
                     <button id="bulk-btn-edit-fields" class="btn" data-action="edit_fields">Edit Game Fields...</button>
                     <button id="bulk-btn-delete" class="btn btn-danger" data-action="delete">Delete Selected Items</button>
                 </div>
@@ -554,21 +566,42 @@
         </div>
     </div>
 
-    <!-- IGDB Game Picker Modal -->
-    <div id="modal-igdb-picker" class="modal" aria-hidden="true">
-        <div class="modal-content">
+    <!-- Bulk Match Modal -->
+    <div id="modal-bulk-match" class="modal" aria-hidden="true">
+        <div class="modal-content" style="max-width: 800px; max-height: 80vh;">
             <header class="modal-header">
-                <h2>Select a Game from IGDB</h2>
+                <h2>Resolve IGDB Matches</h2>
                 <button class="modal-close" data-close>&times;</button>
             </header>
-            <div class="modal-body">
-                <p>Multiple matches found. Please select the correct game.</p>
-                <ul id="igdb-choices-list" class="igdb-choices-list">
-                    <!-- JS will populate choices here -->
-                </ul>
+            <div class="modal-body modal-body-scrollable">
+                <p>Some games had multiple potential matches on IGDB. Please select the correct version for each.</p>
+                <div id="bulk-match-table-container" style="max-height: 60vh; overflow-y: auto;">
+                    <!-- Matching table will be injected here -->
+                </div>
             </div>
             <div class="modal-actions">
                 <button type="button" class="btn" data-close>Cancel</button>
+                <button type="button" id="btn-match-all-first" class="btn btn-primary">Match All with First Choice</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Progress Modal -->
+    <div id="modal-progress" class="modal" aria-hidden="true">
+        <div class="modal-content">
+            <header class="modal-header">
+                <h2 id="progress-title">Processing...</h2>
+                <!-- No close button on purpose for blocking tasks -->
+            </header>
+            <div class="modal-body">
+                <div class="progress-bar-container">
+                    <div id="progress-bar" class="progress-bar"></div>
+                </div>
+                <div id="progress-status" class="progress-status">
+                    <span id="progress-count">0 / 0</span>
+                    <span id="progress-text"></span>
+                </div>
+                <div id="progress-details" class="progress-details muted"></div>
             </div>
         </div>
     </div>

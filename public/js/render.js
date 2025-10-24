@@ -18,64 +18,146 @@ import { escapeHtml, normalizeName } from './utils.js';
  * @param {Array<object>} games - The array of game objects to render.
  */
 export function renderGames(games) {
-  const grid = document.getElementById('display-grid');
-  grid.innerHTML = '';
-  const { selection } = state;
+    const grid = document.getElementById('display-grid');
+    grid.innerHTML = '';
+    const { selection } = state;
 
-  if (!games || games.length === 0) {
-    grid.innerHTML = '<p class="muted">No games found. Try adjusting your filters or adding a new game.</p>';
-    return;
-  }
-
-  games.forEach(game => {
-    const gamePlatformLinks = state.allGamePlatforms.filter(gp => String(gp.game_id) === String(game.id));
-    const card = document.createElement('div');
-    card.className = 'card';
-    if (selection.selectedGameIds.has(String(game.id))) {
-      card.classList.add('selected-card');
+    if (!games || games.length === 0) {
+        grid.innerHTML = '<p class="muted">No games found. Try adjusting your filters or adding a new game.</p>';
+        return;
     }
-    card.dataset.gameId = game.id;
-    const platformsHtml = gamePlatformLinks
-      .map(gp => {
-        const platform = state.allPlatforms.find(p => p.id === gp.platform_id);
-        const format = gp.is_digital ? '📱' : '💿';
-        const pid = platform?.id || gp.platform_id;
-        const pname = escapeHtml(platform?.name || gp.platform_id);
-        return `<span class="plat" data-platform-id="${pid}">${format} ${pname}</span>`;
-      })
-      .join('');
 
-    const tagsHtml = (game.tags || [])
-      .map(tag => `<span class="tag" data-tag="${escapeHtml(tag)}">${escapeHtml(tag)}</span>`)
-      .join(' ');
+    games.forEach(game => {
+        const gamePlatformLinks = state.allGamePlatforms.filter(gp => String(gp.game_id) === String(game.id));
+        const card = document.createElement('div');
+        card.className = 'card';
+        if (selection.selectedGameIds.has(String(game.id))) {
+            card.classList.add('selected-card');
+        }
+        card.dataset.gameId = game.id;
 
-    const coverHtml = state.displayOptions.show_cover ? `<img class="card-cover" src="${game.cover_image_url || '/img/cover_placeholder.svg'}" alt="${game.name} cover" onerror="this.src='/img/cover_placeholder.svg'">` : '';
-    const titleHtml = `<h3 class="card-title">${escapeHtml(game.name)}</h3>`;
-    const descHtml = (state.displayOptions.show_description && game.description) ? `<p class="card-desc">${escapeHtml(game.description)}</p>` : '';
-    const tagsBlockHtml = (state.displayOptions.show_tags && tagsHtml) ? `<div class="tags">${tagsHtml}</div>` : '';
-    const platformsBlockHtml = state.displayOptions.show_platforms ? `<div class="platform-icons">${platformsHtml || '<span class="muted" style="font-size:12px;">No platforms</span>'}</div>` : '';
+        // 1. Platforms list
+        const platformsHtml = gamePlatformLinks
+            .map(gp => {
+                const platform = state.allPlatforms.find(p => p.id === gp.platform_id);
+                const pid = platform?.id || gp.platform_id;
+                const pname = escapeHtml(platform?.name || gp.platform_id);
+                return `<span class="plat" data-platform-id="${pid}">${pname}</span>`;
+            })
+            .join('');
 
-    card.innerHTML = `
-      ${selection.enabled
-        ? `<input type="checkbox"
-                  class="card-checkbox"
-                  data-id="${game.id}"
-                  ${selection.selectedGameIds.has(String(game.id)) ? 'checked' : ''}>` : ''}
-      ${coverHtml}
-      <div class="card-body">
-        ${titleHtml}
-        ${descHtml}
-        ${tagsBlockHtml}
-        ${platformsBlockHtml}
-      </div>
-      <div class="card-actions">
-        <button class="btn btn-sm edit-game" data-id="${game.id}">Edit</button>
-        <button class="btn btn-sm add-to-platform" data-id="${game.id}">+ Platform</button>
-      </div>
-    `;
+        // 2. Description truncation
+        let descHtml = '';
+        if (state.displayOptions.show_description && game.description) {
+            if (game.description.length > 220) {
+                descHtml = `<p class="card-desc">${escapeHtml(game.description.substring(0, 220))}<span class="edit-game truncated-link" data-id="${game.id}">[...]</span></p>`;
+            } else {
+                descHtml = `<p class="card-desc">${escapeHtml(game.description)}</p>`;
+            }
+        }
 
-    grid.appendChild(card);
-  });
+        // 3. Tags list
+        let tagsAndGenresHtml = '';
+        if (state.displayOptions.show_tags) {
+            const gameTags = game.tags || [];
+            const gameGenres = game.genre ? game.genre.split(',').map(g => g.trim()) : []; // Already trimmed
+            const combined = [...new Set([...gameTags, ...gameGenres])].filter(Boolean).sort((a, b) => a.localeCompare(b));
+            if (combined.length > 0) {
+                tagsAndGenresHtml = combined.map(item => `<span class="tag" data-tag="${escapeHtml(item.toLowerCase())}">${escapeHtml(item.toLowerCase())}</span>`).join(' ');
+            }
+        }
+        
+        // 4. Release year and rating
+        const yearRatingHtml = `
+            <div class="card-meta">
+                <span class="release-year">${game.release_year || ''}</span>
+                <span class="rating">${game.esrb_rating || ''}</span>
+            </div>`;
+
+        // 5. Developer/Publisher truncation
+        const createTruncatedList = (items, prefix) => {
+            if (!items || items.length === 0) return '';
+            const displayItems = items.length > 2 ? items.slice(0, 2) : items;
+            let html = displayItems.map(escapeHtml).join(', ');
+            if (items.length > 2) {
+                html += ` <span class="edit-game truncated-link" data-id="${game.id}">[...]</span>`;
+            }
+            return `<div class="card-people"><span class="people-prefix">${prefix}:</span> ${html}</div>`;
+        };
+
+        const devString = (game.developer || '').trim();
+        const pubString = (game.publisher || '').trim();
+        let devPubHtml;
+
+        if (devString && devString === pubString) {
+            const items = devString.split(',').map(d => d.trim());
+            devPubHtml = createTruncatedList(items, 'D+P');
+        } else {
+            const developers = devString ? devString.split(',').map(d => d.trim()) : [];
+            const publishers = pubString ? pubString.split(',').map(p => p.trim()) : [];
+            devPubHtml = `${createTruncatedList(developers, 'D')}${createTruncatedList(publishers, 'P')}`;
+        }
+
+
+        // 6. Trailer icon
+        const trailerIconHtml = game.trailer_url ? `
+            <a href="${game.trailer_url}" target="_blank" class="card-icon trailer-icon" title="Watch trailer">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            </a>` : '';
+
+        // 7. Platform type icons
+        const hasPhysical = gamePlatformLinks.some(gp => {
+            const platform = state.allPlatforms.find(p => p.id === gp.platform_id);
+            return platform?.supports_physical;
+        });
+        const hasDigital = gamePlatformLinks.some(gp => {
+            const platform = state.allPlatforms.find(p => p.id === gp.platform_id);
+            return platform?.supports_digital;
+        });
+        const platformTypeIconsHtml = `
+            <div class="card-icon platform-type-icons">
+                ${hasPhysical ? `<svg class="disc-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" title="Physical release"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-12h2v4h-2zm0 6h2v2h-2z"/></svg>` : ''}
+                ${hasDigital ? `<svg class="download-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" title="Digital release"><path d="M13 5v6h1.17L12 13.17 9.83 11H11V5h2m2-2H9v6H5l7 7 7-7h-4V3zm4 15H5v2h14v-2z"/></svg>` : ''}
+            </div>`;
+
+        const coverHtml = state.displayOptions.show_cover ? `
+            <div class="card-cover-container">
+                <img class="card-cover" src="${game.cover_image_url || '/img/cover_placeholder.svg'}" alt="${game.name} cover" onerror="this.src='/img/cover_placeholder.svg'">
+                ${platformTypeIconsHtml}
+                ${trailerIconHtml}
+            </div>` : '';
+        const titleHtml = `<h3 class="card-title">${escapeHtml(game.name)}</h3>`;
+        const platformsBlockHtml = state.displayOptions.show_platforms ? `<div class="platform-icons">${platformsHtml || '<span class="muted" style="font-size:12px;">No platforms</span>'}</div>` : '';
+        const tagsBlockHtml = (state.displayOptions.show_tags && tagsAndGenresHtml) ? `<div class="tags-scroll-container"><div class="tags">${tagsAndGenresHtml}</div></div>` : '';
+
+        const metaBlockHtml = `
+            <div class="card-meta-block">
+                ${yearRatingHtml}
+                ${devPubHtml}
+            </div>`;
+        
+        const actionsHtml = `
+          <div class="card-actions-inline">
+            <button class="btn btn-sm edit-game" data-id="${game.id}">Edit</button>
+            <button class="btn btn-sm add-to-platform" data-id="${game.id}">+ Platform</button>
+          </div>
+        `;
+
+        card.innerHTML = `
+          ${selection.enabled ? `<input type="checkbox" class="card-checkbox" data-id="${game.id}" ${selection.selectedGameIds.has(String(game.id)) ? 'checked' : ''}>` : ''}
+          ${coverHtml}
+          <div class="card-body">
+            ${titleHtml}
+            ${platformsBlockHtml}
+            ${metaBlockHtml}
+            ${actionsHtml}
+            ${descHtml}
+            ${tagsBlockHtml}
+          </div>
+        `;
+
+        grid.appendChild(card);
+    });
 }
 
 export function renderPlatforms(platforms) {
@@ -227,10 +309,18 @@ export function renderAutocomplete(suggestions, container = null, footerText = n
     return;
   }
 
-  // Filter suggestions into groups. Use startsWith for flexibility.
-  // 'fts_exact_prefix' will be treated as an exact match.
-  // 'fts_word_fuzzy' and 'char_fuzzy' will be treated as fuzzy matches.
-  const exactMatches = suggestions.filter(s => s.match_type?.startsWith('fts_exact'));
+  // Find the very first exact match to prioritize it.
+  const firstExactMatchIndex = suggestions.findIndex(s => s.match_type?.startsWith('fts_exact'));
+  let sortedSuggestions = [...suggestions];
+
+  if (firstExactMatchIndex > 0) {
+    // If the first exact match is not already at the top, move it there.
+    const [firstExact] = sortedSuggestions.splice(firstExactMatchIndex, 1);
+    sortedSuggestions.unshift(firstExact);
+  }
+
+  // Now, group the (potentially re-sorted) suggestions.
+  const exactMatches = sortedSuggestions.filter(s => s.match_type?.startsWith('fts_exact'));
   const fuzzyMatches = suggestions.filter(s => s.match_type?.includes('fuzzy'));
 
   let html = '';

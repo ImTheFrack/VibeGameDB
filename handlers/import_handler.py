@@ -375,8 +375,8 @@ def _fetch_igdb_data(token: str, title: Optional[str] = None, igdb_id: Optional[
     headers = {'Client-ID': client_id, 'Authorization': f'Bearer {token}'}
     
     # Define the fields we want from IGDB. This is an APOCALYPSE query.
-    # I've added 'keywords' to the list. This will return an array of IDs.
-    fields = "fields name, cover.image_id, first_release_date, genres.name, keywords, involved_companies.developer, involved_companies.publisher, involved_companies.company.name, summary, storyline, total_rating, aggregated_rating_count, url;"
+    # We now pull from genres, themes, and player_perspectives for cleaner data.
+    fields = "fields name, cover.image_id, first_release_date, genres.name, themes.name, player_perspectives.name, involved_companies.developer, involved_companies.publisher, involved_companies.company.name, summary, storyline, total_rating, aggregated_rating_count, url;"
     
     if igdb_id:
         body = f"{fields} where id = {igdb_id};"
@@ -400,25 +400,8 @@ def _fetch_igdb_data(token: str, title: Optional[str] = None, igdb_id: Optional[
             if not results:
                 return []
             
-            # If we searched by ID, we only have one result, so fetch its keywords.
-            if igdb_id and len(results) == 1:
-                game_data = results[0]
-                # --- Step 2: If we have keyword IDs, fetch their names ---
-                keyword_ids = game_data.get('keywords')
-                if keyword_ids:
-                    print(f"[IGDB] Found {len(keyword_ids)} keyword IDs. Fetching names...")
-                    ids_str = ",".join(map(str, keyword_ids))
-                    keyword_body = f"fields name; where id = ({ids_str}); limit {len(keyword_ids)};"
-                    keyword_req = urllib.request.Request(f"{api_url}/keywords", data=keyword_body.encode('utf-8'), headers=headers)
-                    with urllib.request.urlopen(keyword_req, timeout=10) as kw_resp:
-                        if kw_resp.status == 200:
-                            keyword_results = json.loads(kw_resp.read().decode('utf-8'))
-                            # Attach the keyword names to the game data object for mapping
-                            game_data['keyword_names'] = [kw['name'] for kw in keyword_results]
-                            print(f"[IGDB] Fetched {len(game_data['keyword_names'])} keyword names.")
-                return [game_data] # Return as a list with one item
-
-            # If we searched by title, return all results for the user to pick from.
+            # The new fields (themes.name, etc.) are expanded directly, so no second query is needed.
+            # We can just return the results.
             return results
 
     except Exception as e:
@@ -439,6 +422,10 @@ def _map_igdb_to_schema(igdb_game: Dict[str, Any]) -> Dict[str, Any]:
     # Extract developers and publishers
     developers = [ic['company']['name'] for ic in igdb_game.get('involved_companies', []) if ic.get('developer')]
     publishers = [ic['company']['name'] for ic in igdb_game.get('involved_companies', []) if ic.get('publisher')]
+    
+    # Combine themes and player perspectives for tags
+    themes = [t['name'] for t in igdb_game.get('themes', [])]
+    perspectives = [p['name'] for p in igdb_game.get('player_perspectives', [])]
 
     mapped = {
         'name': igdb_game.get('name'),
@@ -448,7 +435,7 @@ def _map_igdb_to_schema(igdb_game: Dict[str, Any]) -> Dict[str, Any]:
         'genre': ", ".join(g['name'] for g in igdb_game.get('genres', [])),
         'developer': ", ".join(developers),
         'publisher': ", ".join(publishers),
-        'tags': [kw.lower() for kw in igdb_game.get('keyword_names', [])] # Use keyword names for tags
+        'tags': [tag.lower() for tag in themes + perspectives]
     }
 
     if igdb_game.get('cover', {}).get('image_id'):
@@ -735,9 +722,9 @@ def handle(req: Dict[str, Any]):
             return {'game_data': {}}
         elif len(igdb_results) == 1:
             # Only one result, so we can fetch its keywords and map it directly.
-            full_game_data = _fetch_igdb_data(token, igdb_id=igdb_results[0]['id'])
-            mapped_data = _map_igdb_to_schema(full_game_data[0] if full_game_data else None)
-            return {'game_data': mapped_data}
+            # The initial fetch already has all the data we need now.
+            mapped_data = _map_igdb_to_schema(igdb_results[0])
+            return {'game_data': mapped_data, 'raw_igdb_data': igdb_results}
         else:
             # Multiple results, return a list of choices for the user.
             return {'game_choices': igdb_results}

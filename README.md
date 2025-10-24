@@ -160,6 +160,11 @@ Features
  - [x] UPDATE TO DATABASE for way more fields and filters
    - Games: Genre, Rating, Target AUdience, Developer(s), Publisher(s), IGDB ID
    - Platforms: Generation, Manufacturer
+ - [x] IGDB Integration -- Fetch game metadata from Internet Game Database:
+   - Search IGDB by game name or IGDB tag
+   - Auto-populate cover art, descriptions, release dates, genres, platforms, keywords, etc.
+   - Link local games to IGDB IDs for future syncing
+   - TODO: Handle API rate limits and caching
 
 TODO   
 1. AI Enrichment -- Supplement game data using AI:
@@ -169,36 +174,28 @@ TODO
    - Validate and sanitize AI outputs (no chain-of-thought exposure)
    - Batch enrichment for multiple games
 
-2. IGDB Integration -- Fetch game metadata from Internet Game Database:
-   - Search IGDB by game name
-   - Auto-populate cover art, descriptions, release dates, genres, platforms
-   - Link local games to IGDB IDs for future syncing
-   - Handle API rate limits and caching
-
-3. Platform Management -- Add and manage platforms:
-   - Create custom platforms (e.g., "Wishlist", "Backlog", "Completed")
-   - Edit platform details (name, type, icon, description, year acquired)
+2. Platform Management -- Add and manage platforms:
    - Future: Direct API sync from stores (Steam, Epic, GOG, etc.)
 
-4. CSV Export -- Export your library for backup or external use:
+3. CSV Export -- Export your library for backup or external use:
    - Export all games and platforms to CSV
    - Include all metadata (tags, acquisition method, platforms, etc.)
    - Format is compatible with CSV import (round-trip safe)
    - Support filtered exports (e.g., only games on a specific platform)
 
-5. Screenshots & Media -- Store and display game media:
+4. Screenshots & Media -- Store and display game media:
     - Upload and store multiple fullscreen screenshots per game
     - Display in lightbox or carousel on game detail view
     - Lazy-load images to keep UI responsive
     - Optional: Fetch screenshots from IGDB or other sources
 
-6. Tags & Organization -- Flexible tagging system:
+5. Tags & Organization -- Flexible tagging system:
     - Add custom tags to games (e.g., "co-op", "story-driven", "completed", "wishlist")
     - Filter and search by tags
     - Suggest tags based on IGDB genres or AI analysis
     - Tag management UI to view all tags and their usage counts
 
-7. Responsive UI & Polish -- Frontend refinements:
+6. Responsive UI & Polish -- Frontend refinements:
     - Mobile-friendly layout (games/platforms cards adapt to screen size)
     - Dark theme (already in place) with light theme option
     - Keyboard shortcuts for power users (e.g., Ctrl+K for search)

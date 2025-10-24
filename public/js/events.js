@@ -3,7 +3,7 @@ import { state, clearAllFilters } from './state.js';
 import { fetchGames as fetchGamesFromApi, fetchPlatforms as fetchPlatformsFromApi, fetchAutocomplete, postBulkOperation, fetchFromIgdb } from './api.js';
 import { renderGames, renderPlatforms, renderBulkActionsBar, renderAutocomplete } from './render.js';
 import { applyFilters, extractAllTags, updateActiveFiltersDisplay, updateTabCounts } from './filters.js';
-import { openModal, closeModal, populateFilterModal, populateAddToPlatformForm, showEditGameModal, showBulkEditGameModal, showEditPlatformModal, populateGamePlatformsList, clearAutocomplete, initAutocomplete, resetGameModalUI, showIgdbPickerModal } from './modals.js';
+import { openModal, closeModal, populateFilterModal, populateAddToPlatformForm, showEditGameModal, showBulkEditGameModal, showEditPlatformModal, populateGamePlatformsList, clearAutocomplete, initAutocomplete, resetGameModalUI, showProgressModal, updateProgress, showBulkMatchModal } from './modals.js';
 import { initImportModal } from './modals.js';
 import { normalizeName } from './utils.js';
 
@@ -150,6 +150,10 @@ export function wireDomEvents() {
     formGame.querySelector('.btn-clone').parentElement.style.display = 'none';
     document.getElementById('btn-pull-igdb').style.display = 'inline-block';
     document.getElementById('game-platforms-section').style.display = 'block';
+    // Show the IGDB pull controls
+    const igdbPullControls = document.querySelector('.igdb-pull-controls');
+    if (igdbPullControls) igdbPullControls.style.display = 'flex';
+
 
     document.getElementById('link-game-section').style.display = 'none';
     openModal(modalGame);
@@ -225,10 +229,16 @@ export function wireDomEvents() {
   // --- IGDB Pull Button in Game Modal ---
   document.getElementById('btn-pull-igdb').addEventListener('click', async (e) => {
     e.preventDefault();
-    const title = formGame.querySelector('input[name="name"]').value;
-    const igdbId = formGame.querySelector('input[name="igdb_id"]').value;
-    if (!title && !igdbId) {
-      alert('Please enter a title or an IGDB ID to search.');
+    const nameInput = formGame.querySelector('input[name="name"]');
+    const idInput = formGame.querySelector('input[name="igdb_id"]');
+    const pullMethod = formGame.querySelector('input[name="igdb_pull_method"]:checked').value;
+
+    let title = nameInput.value;
+    let igdbId = idInput.value;
+
+    // Only show an alert if both fields are empty.
+    if (!title.trim() && !igdbId.trim()) {
+      alert('Please enter a Name or an IGDB ID to search for.');
       return;
     }
 
@@ -237,8 +247,6 @@ export function wireDomEvents() {
     button.textContent = 'Fetching...';
     button.disabled = true;
 
-    const result = await fetchFromIgdb(title, igdbId);
-
     const populateForm = (data) => {
       Object.keys(data).forEach(key => {
         const input = formGame.querySelector(`[name="${key}"]`);
@@ -246,14 +254,84 @@ export function wireDomEvents() {
       });
     };
 
+    let result = null;
+
+    if (pullMethod === 'name') {
+      // If name is blank, try ID first.
+      if (!title.trim()) {
+        result = igdbId ? await fetchFromIgdb(null, igdbId) : null;
+      } else {
+        result = await fetchFromIgdb(title, null);
+      }
+    } else { // pullMethod is 'id'
+      // Try ID first.
+      result = igdbId ? await fetchFromIgdb(null, igdbId) : null;
+      // If ID search fails (or ID was blank), fall back to name.
+      if ((!result || (!result.game_data && !result.game_choices)) && title.trim()) {
+        result = await fetchFromIgdb(title, null);
+      }
+    }
+
+    if (!result || (!result.game_data && !result.game_choices)) {
+      alert('No game found on IGDB with the provided Name or ID.');
+    }
+
+    /**
+     * A less aggressive normalization for comparing titles.
+     * It standardizes case and whitespace but preserves punctuation.
+     * @param {string} name The title to normalize.
+     */
+    const normalizeForComparison = (name) => {
+      return (name || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    };
+
     if (result) {
-      if (result.game_data) {
+      // If we got a single result, but the name doesn't match what the user typed,
+      // show the picker modal to let the user confirm their intention.
+      // This handles cases where IGDB returns a "best" match that isn't what the user wanted.
+      const singleResultNameMismatch = result.game_data && 
+                                       title.trim() !== '' &&
+                                       normalizeForComparison(result.game_data.name) !== normalizeForComparison(title);
+
+      if (result.game_data && !singleResultNameMismatch) {
         // Single, definitive result
         populateForm(result.game_data);
       } else if (result.game_choices && result.game_choices.length > 0) {
-        // Multiple results, show the picker modal
-        showIgdbPickerModal(result.game_choices, (selectedGameData) => {
-          populateForm(selectedGameData);
+        // Multiple results, show the generalized bulk match modal.
+        const matchData = [{
+          localName: title,
+          choices: result.game_choices
+        }];
+        showBulkMatchModal(matchData, async (selectedIgdbId, didSelect) => {
+          if (didSelect && selectedIgdbId) {
+            // This callback is executed when a choice is made in the modal.
+            const finalResult = await fetchFromIgdb(null, selectedIgdbId);
+            if (finalResult && finalResult.game_data) {
+              populateForm(finalResult.game_data);
+            }
+          } else {
+            // If the modal was closed without a selection, refresh the main game list.
+            // If a selection was made, the game modal will be populated, and its save action will trigger fetchGames().
+            // So, this fetchGames() here is primarily for the "closed without selection" case.
+            await fetchGames();
+          }
+        });
+      } else if (singleResultNameMismatch) {
+        // The single result was a name mismatch. We must treat it like a choice from a multi-result
+        // list. The backend returns the raw data in `game_choices` for multiple results, or just
+        // `raw_igdb_data` for a single result. We pass this raw data to the picker, which will
+        // then re-fetch the full, properly mapped data upon user selection.
+        const choices = result.raw_igdb_data || (result.game_data ? [result.game_data] : []); // Ensure choices is an array
+        const matchData = [{ localName: title, choices: choices }];
+        showBulkMatchModal(matchData, async (selectedIgdbId, didSelect) => {
+            if (didSelect && selectedIgdbId) {
+                const finalResult = await fetchFromIgdb(null, selectedIgdbId);
+                if (finalResult && finalResult.game_data) {
+                    populateForm(finalResult.game_data);
+                }
+            } else {
+                await fetchGames();
+            }
         });
       } else {
         alert('No game found on IGDB with that title.');
@@ -1084,47 +1162,126 @@ export function wireDomEvents() {
       const action = button.dataset.action;
       const itemType = state.currentTab === 'games' ? 'game' : 'platform';
       const ids = Array.from(itemType === 'game' ? state.selection.selectedGameIds : state.selection.selectedPlatformIds);
+      const bulkPullMethod = document.querySelector('input[name="bulk_igdb_pull_method"]:checked').value;
+
+      /**
+       * A less aggressive normalization for comparing titles.
+       * It standardizes case and whitespace but preserves punctuation.
+       * @param {string} name The title to normalize.
+       */
+      const normalizeForComparison = (name) => {
+        return (name || '').toLowerCase().replace(/\s+/g, ' ').trim();
+      };
+
+      button.disabled = true;
+      const originalButtonText = button.textContent;
 
       if (action === 'edit_fields') {
         closeModal(modalBulkEdit);
+        button.disabled = false; // Re-enable button
         await showBulkEditGameModal();
         return;
       }
 
       if (action === 'pull_igdb') {
         if (!confirm(`This will attempt to fetch data from IGDB for ${ids.length} game(s), potentially overwriting existing data. Do you want to proceed?`)) {
+          button.disabled = false; // Re-enable if user cancels
           return;
         }
         closeModal(modalBulkEdit);
+        showProgressModal('Pulling from IGDB');
         let processed = 0;
+        let failures = 0;
+        const conflictingUpdates = [];
+        const multiMatchUpdates = [];
+
         for (const gameId of ids) {
           const game = state.allGames.find(g => String(g.id) === gameId);
           if (!game || !game.name) continue;
+          let currentProcessed = processed + conflictingUpdates.length + multiMatchUpdates.length + failures;
 
-          // In bulk mode, we can't ask the user to choose, so we fetch by ID if available,
-          // otherwise we fetch by title and hope the first result is correct.
-          const result = await fetchFromIgdb(game.igdb_id ? null : game.name, game.igdb_id);
+          // Determine primary and fallback search parameters based on bulk pull method
+          const primaryTitle = bulkPullMethod === 'name' ? game.name : null;
+          const primaryId = bulkPullMethod === 'id' ? game.igdb_id : null;
+          const fallbackTitle = bulkPullMethod === 'id' ? game.name : null;
+          const fallbackId = bulkPullMethod === 'name' ? game.igdb_id : null;
+
+          let result = await fetchFromIgdb(primaryTitle, primaryId);
+          if (!result || (!result.game_data && !result.game_choices)) {
+            result = await fetchFromIgdb(fallbackTitle, fallbackId);
+          }
 
           let dataToUpdate = null;
           if (result && result.game_data) {
             dataToUpdate = result.game_data;
-          } else if (result && result.game_choices && result.game_choices.length > 0) {
-            // Can't ask user, so fetch full data for the *first* choice
-            const firstChoiceId = result.game_choices[0].id;
-            const firstChoiceResult = await fetchFromIgdb(null, firstChoiceId);
-            if (firstChoiceResult && firstChoiceResult.game_data) {
-              dataToUpdate = firstChoiceResult.game_data;
-            }
+          } else if (bulkPullMethod === 'name' && result && result.game_choices && result.game_choices.length > 0) {
+            // If pulling by name and we get multiple results, cache them for the user to resolve later.
+            multiMatchUpdates.push({
+              gameId: gameId,
+              localName: game.name,
+              choices: result.game_choices
+            });
+            updateProgress(currentProcessed + 1, ids.length, { Failures: failures, Conflicts: conflictingUpdates.length, 'Multi-Match': multiMatchUpdates.length });
+            continue; // Skip immediate processing
           }
 
+          if (!dataToUpdate) {
+            failures++;
+            updateProgress(currentProcessed + 1, ids.length, { Failures: failures, Conflicts: conflictingUpdates.length, 'Multi-Match': multiMatchUpdates.length });
+            continue;
+          }
+          
           if (dataToUpdate) {
+            // **Safety Check**: If pulling by name, ensure the result name matches the local name.
+            // If it doesn't match, cache it for later confirmation instead of applying it now.
+            if (bulkPullMethod === 'name' && normalizeForComparison(dataToUpdate.name) !== normalizeForComparison(game.name)) {
+              console.warn(`Caching conflicting IGDB update for "${game.name}". Found: "${dataToUpdate.name}".`);
+              conflictingUpdates.push({
+                gameId: gameId,
+                localName: game.name,
+                igdbData: dataToUpdate
+              });
+              updateProgress(currentProcessed + 1, ids.length, { Failures: failures, Conflicts: conflictingUpdates.length, 'Multi-Match': multiMatchUpdates.length });
+              continue; // Don't process this one immediately
+            }
+
             const res = await fetch(`/plugins/database_handler/games/${gameId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dataToUpdate) });
             if (!res.ok) console.error(`Failed to update game ${gameId}`);
             processed++;
           }
+          updateProgress(processed + conflictingUpdates.length + multiMatchUpdates.length + failures, ids.length, { Failures: failures, Conflicts: conflictingUpdates.length, 'Multi-Match': multiMatchUpdates.length });
         }
-        alert(`IGDB data pull complete. Processed ${processed} of ${ids.length} games.`);
-        await fetchGames(); // Refresh data
+        
+        closeModal(document.getElementById('modal-progress'));
+        if (conflictingUpdates.length > 0) {
+          let conflictSummary = `The following ${conflictingUpdates.length} game(s) had name mismatches:\n\n`;
+          conflictingUpdates.forEach(conflict => {
+            conflictSummary += `  - Local: "${conflict.localName}"\n    IGDB:  "${conflict.igdbData.name}"\n`;
+          });
+          conflictSummary += '\nDo you want to apply these updates anyway?';
+
+          if (confirm(conflictSummary)) {
+            for (const conflict of conflictingUpdates) {
+              await fetch(`/plugins/database_handler/games/${conflict.gameId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(conflict.igdbData) });
+            }
+            alert(`Applied ${conflictingUpdates.length} conflicting update(s) after confirmation.`);
+          } else {
+            alert(`Skipped ${conflictingUpdates.length} conflicting update(s).`);
+          }
+        }
+
+        // Step 2: Handle multi-matches
+        if (multiMatchUpdates.length > 0) {
+          showBulkMatchModal(multiMatchUpdates, async () => {
+            await fetchGames(); // Refresh data after the match modal is closed
+          });
+        } else {
+          // If there were no multi-matches, refresh immediately.
+          await fetchGames();
+        }
+
+        button.disabled = false; // Re-enable button after completion
+        button.textContent = originalButtonText;
         return;
       }
 
@@ -1152,6 +1309,9 @@ export function wireDomEvents() {
         if (platformData) { state.allPlatforms = platformData.platforms || []; }
         if (state.currentTab === 'games') applyFilters(); else renderPlatforms(state.allPlatforms);
       });
+
+      button.disabled = false;
+      button.textContent = originalButtonText;
     });
   }
 

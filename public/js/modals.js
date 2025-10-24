@@ -26,12 +26,49 @@ export function closeModal(modal, focusReturnEl = null) {
   modal.setAttribute('aria-hidden', 'true');
   modal.style.display = 'none';
 
+  // Dispatch a custom 'close' event so other parts of the app can react.
+  modal.dispatchEvent(new CustomEvent('close'));
+
   // Now, return focus to the appropriate element.
   if (focusReturnEl && focusReturnEl instanceof HTMLElement) {
     focusReturnEl.focus();
     focusReturnEl.removeAttribute('data-opens-modal');
   } else {
     document.body.focus(); // Fallback focus to the body
+  }
+}
+
+/**
+ * Shows a generic progress modal for long-running tasks.
+ * @param {string} title - The title to display in the modal header.
+ */
+export function showProgressModal(title) {
+  const modal = document.getElementById('modal-progress');
+  if (!modal) return;
+  document.getElementById('progress-title').textContent = title;
+  // Reset progress state
+  updateProgress(0, 1);
+  document.getElementById('progress-details').innerHTML = '';
+  openModal(modal);
+}
+
+/**
+ * Updates the state of the progress modal.
+ * @param {number} current - The number of items processed.
+ * @param {number} total - The total number of items.
+ * @param {Object.<string, number>} [details={}] - Key-value pairs for additional status text (e.g., { Failures: 5, Skipped: 2 }).
+ */
+export function updateProgress(current, total, details = {}) {
+  const bar = document.getElementById('progress-bar');
+  const countEl = document.getElementById('progress-count');
+  const detailsEl = document.getElementById('progress-details');
+
+  if (bar) bar.style.width = total > 0 ? `${(current / total) * 100}%` : '0%';
+  if (countEl) countEl.textContent = `${current} / ${total}`;
+
+  if (detailsEl) {
+    const detailParts = Object.entries(details).map(([key, value]) => `${key}: ${value}`);
+    detailsEl.innerHTML = detailParts.join(' &nbsp;•&nbsp; ');
   }
 }
 
@@ -460,6 +497,206 @@ export function updateFormatOptions(platform) {
   }
 }
 
+/**
+ * Shows a modal for resolving bulk IGDB pulls that resulted in multiple matches.
+ * @param {Array<Object>} multiMatchResults - An array of objects, each containing { gameId, localName, choices }. For single-game mode, this array will contain one item.
+ * @param {function(string|null, boolean):void} [onComplete] - Callback when a selection is made (single mode) or modal closes (bulk mode).
+ */
+export function showBulkMatchModal(multiMatchResults, onComplete) {
+  const modal = document.getElementById('modal-bulk-match');
+  const container = document.getElementById('bulk-match-table-container');
+  const btnMatchAll = document.getElementById('btn-match-all-first');
+  const modalTitle = modal.querySelector('h2');
+  const modalDescription = modal.querySelector('p');
+  if (!modal || !container || !btnMatchAll || !modalTitle || !modalDescription) return;
+
+  // Reset the "Match All" button to its initial state on every open.
+  btnMatchAll.disabled = false;
+  btnMatchAll.textContent = 'Match All with First Choice';
+
+  // Generalize the modal's text and controls based on the number of items.
+  if (multiMatchResults.length === 1) {
+    modalTitle.textContent = 'Select a Game from IGDB';
+    modalDescription.textContent = 'Multiple matches found. Please select the correct game.';
+    btnMatchAll.style.display = 'none'; // Hide "Match All" for a single item
+  } else {
+    modalTitle.textContent = 'Resolve IGDB Matches';
+    modalDescription.textContent = 'Some games had multiple potential matches on IGDB. Please select the correct version for each.';
+    btnMatchAll.style.display = 'inline-block';
+  }
+
+  // Build the table
+  const table = document.createElement('table');
+  table.className = 'bulk-match-table';
+  const tbody = document.createElement('tbody');
+
+  multiMatchResults.forEach(match => {
+    const row = document.createElement('tr');
+    if (match.gameId) {
+      row.dataset.gameId = match.gameId;
+    }
+
+    // Sort choices to prioritize an exact match with the local name
+    const sortedChoices = [...match.choices];
+    const localNormalized = normalizeName(match.localName);
+    const exactMatchIndex = sortedChoices.findIndex(c => normalizeName(c.name) === localNormalized);
+
+    if (exactMatchIndex > 0) {
+      // Move the exact match to the front of the array
+      const [exact] = sortedChoices.splice(exactMatchIndex, 1);
+      sortedChoices.unshift(exact);
+    }
+
+    const renderOption = (choice) => {
+      const year = choice.first_release_date ? new Date(choice.first_release_date * 1000).getFullYear() : 'N/A';
+      const description = choice.summary ? choice.summary.substring(0, 80) + '...' : 'No summary available.';
+      return `
+        <div class="item-text">
+          <div class="item-name">${choice.name} (${year})</div>
+          <div class="item-context">${description}</div>
+        </div>
+      `;
+    };
+
+    const optionsHtml = sortedChoices.map(choice => `
+      <div class="custom-select-option" data-value="${choice.id}">
+        ${renderOption(choice)}
+      </div>
+    `).join('');
+
+    row.innerHTML = `
+      <td>${match.localName}</td>
+      <td>
+        <div class="custom-select-container" data-selected-value="${sortedChoices[0].id}">
+          <div class="custom-select-selected-text" tabindex="0">${renderOption(sortedChoices[0])}</div>
+          <div class="custom-select-options">${optionsHtml}</div>
+        </div>
+      </td>
+      <td><button class="btn btn-sm btn-apply-match">Apply</button></td>
+    `;
+    tbody.appendChild(row);
+  });
+
+  table.appendChild(tbody);
+  container.innerHTML = '';
+  container.appendChild(table);
+
+  let activeSelectContainer = null; // Keep track of the currently open dropdown
+
+  // Event handler for individual "Apply" buttons
+  const applyMatch = async (row) => {
+    const gameId = row.dataset.gameId;
+    const isSingleMode = !gameId; // In single-edit mode, gameId is not set on the row.
+    const selectContainer = row.querySelector('.custom-select-container');
+    const igdbId = selectContainer.dataset.selectedValue;
+
+    const applyButton = row.querySelector('.btn-apply-match');
+    applyButton.textContent = '...';
+    applyButton.disabled = true;
+
+    if (isSingleMode) {
+      // In single mode, the onComplete callback handles applying the data.
+      if (onComplete) onComplete(igdbId, true); // Pass true for didSelect
+      closeModal(modal); // Close immediately after selection.
+    } else {
+      // In bulk mode, we update the game directly.
+      const result = await fetchFromIgdb(null, igdbId);
+      if (result && result.game_data) {
+        await fetch(`/plugins/database_handler/games/${gameId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(result.game_data)
+        });
+        row.style.opacity = '0.5';
+        applyButton.textContent = 'Applied';
+      } else {
+        applyButton.textContent = 'Error';
+      }
+    }
+  };
+
+  // A single, robust event listener on the document to handle all dropdown interactions
+  const documentClickHandler = (e) => {
+    const selectedText = e.target.closest('.custom-select-selected-text');
+    const option = e.target.closest('.custom-select-option');
+    const applyBtn = e.target.closest('.btn-apply-match');
+
+    if (selectedText) {
+      const currentSelectContainer = selectedText.closest('.custom-select-container');
+      const isClosing = activeSelectContainer === currentSelectContainer;
+
+      // Close any currently open dropdown
+      if (activeSelectContainer) {
+        const oldOptions = document.body.querySelector('.custom-select-options');
+        if (oldOptions) {
+          oldOptions.style.display = 'none';
+          activeSelectContainer.appendChild(oldOptions);
+        }
+        activeSelectContainer = null;
+      }
+
+      // If we weren't closing the dropdown, it means we are opening it.
+      if (!isClosing) {
+        const optionsContainer = currentSelectContainer.querySelector('.custom-select-options');
+        if (!optionsContainer) return;
+
+        if (activeSelectContainer && activeSelectContainer !== customSelectContainer) {
+          const oldOptions = activeSelectContainer.querySelector('.custom-select-options');
+          oldOptions.style.display = 'none';
+          activeSelectContainer.appendChild(oldOptions);
+        }
+        document.body.appendChild(optionsContainer);
+        const rect = selectedText.getBoundingClientRect();
+        Object.assign(optionsContainer.style, { left: `${rect.left}px`, top: `${rect.bottom + 2}px`, width: `${rect.width}px` });
+        optionsContainer.style.display = 'block';
+        activeSelectContainer = currentSelectContainer;
+      }
+    } else if (option) {
+      if (!activeSelectContainer) return;
+      const optionsContainer = option.parentElement;
+      const selectedDisplay = activeSelectContainer.querySelector('.custom-select-selected-text');
+      activeSelectContainer.dataset.selectedValue = option.dataset.value;
+      selectedDisplay.innerHTML = option.innerHTML;
+      optionsContainer.style.display = 'none';
+      activeSelectContainer.appendChild(optionsContainer);
+      activeSelectContainer = null;
+    } else if (applyBtn) {
+      applyMatch(e.target.closest('tr'));
+    } else {
+      // Click was outside any interactive element, close the active dropdown
+      if (activeSelectContainer) {
+        const options = activeSelectContainer.querySelector('.custom-select-options');
+        if (options) {
+          options.style.display = 'none';
+          activeSelectContainer.appendChild(options);
+          activeSelectContainer = null;
+        }
+      }
+    }
+  };
+
+  // Attach the listener to the document. We'll remove it when the modal closes.
+  document.addEventListener('click', documentClickHandler);
+  modal.addEventListener('close', () => {
+    document.removeEventListener('click', documentClickHandler);
+    // Always call onComplete on close, passing null for selectedIgdbId and false for didSelect.
+    if (onComplete) onComplete(null, false);
+  }, { once: true });
+
+  // Event handler for "Match All with First"
+  const matchAllHandler = async () => {
+    btnMatchAll.disabled = true;
+    btnMatchAll.textContent = 'Applying...';
+    for (const row of tbody.querySelectorAll('tr')) {
+      await applyMatch(row);
+    }
+    btnMatchAll.textContent = 'All Applied';
+  };
+  btnMatchAll.addEventListener('click', matchAllHandler, { once: true });
+
+  openModal(modal);
+}
+
 export async function populateGamePlatformsList(gameId) {
   const listEl = document.getElementById('game-platforms-list');
   if (!gameId) {
@@ -484,57 +721,6 @@ export async function populateGamePlatformsList(gameId) {
       listEl.appendChild(li);
     });
   }
-}
-
-/**
- * Populates and shows the IGDB game picker modal.
- * @param {Array<Object>} choices - The array of game choices from the IGDB API.
- * @param {function(Object):void} onSelect - Callback function when a game is chosen.
- */
-export function showIgdbPickerModal(choices, onSelect) {
-  const modal = document.getElementById('modal-igdb-picker');
-  const list = document.getElementById('igdb-choices-list');
-  if (!modal || !list) return;
-
-  list.innerHTML = ''; // Clear previous choices
-
-  choices.forEach(choice => {
-    const li = document.createElement('li');
-    li.className = 'igdb-choice-item';
-    li.dataset.igdbId = choice.id;
-
-    const year = choice.first_release_date ? new Date(choice.first_release_date * 1000).getFullYear() : 'N/A';
-    const summary = choice.summary ? choice.summary.substring(0, 150) + '...' : 'No summary available.';
-
-    li.innerHTML = `
-      <div class="igdb-choice-info">
-        <div class="igdb-choice-title">${choice.name} <span class="muted">(${year})</span></div>
-        <div class="igdb-choice-summary">${summary}</div>
-      </div>
-    `;
-    list.appendChild(li);
-  });
-
-  // Use a single delegated event listener
-  const clickHandler = async (e) => {
-    const item = e.target.closest('.igdb-choice-item');
-    if (item) {
-      const igdbId = item.dataset.igdbId;
-      closeModal(modal);
-      list.removeEventListener('click', clickHandler); // Clean up listener
-
-      // Fetch the full data for the selected ID
-      const result = await fetchFromIgdb(null, igdbId);
-      if (result && result.game_data) {
-        onSelect(result.game_data);
-      }
-    }
-  };
-
-  list.removeEventListener('click', clickHandler); // Ensure no duplicate listeners
-  list.addEventListener('click', clickHandler);
-
-  openModal(modal);
 }
 
 /**
@@ -632,7 +818,12 @@ export async function showEditGameModal(gameId, doOpen = true, isBulkEdit = fals
   await populateGamePlatformsList(gameId);
   // Show clone/delete button group for "Edit" mode
   const actionButtons = formGame.querySelector('.btn-clone').parentElement;
-  actionButtons.style.display = isBulkEdit ? 'none' : 'flex';
+  actionButtons.style.display = isBulkEdit ? 'none' : 'flex'; // This is the clone/delete group
+  // Show/hide the IGDB pull controls
+  const igdbPullControls = formGame.querySelector('.igdb-pull-controls');
+  if (igdbPullControls) {
+    igdbPullControls.style.display = isBulkEdit ? 'none' : 'flex';
+  }
   document.getElementById('btn-pull-igdb').style.display = isBulkEdit ? 'none' : 'inline-block';
   // Hide/show elements based on mode
   formGame.querySelector('.inline-checkboxes').style.display = 'flex';
