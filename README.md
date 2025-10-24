@@ -43,18 +43,20 @@ Represents platforms you own (e.g., Steam, PlayStation 5, Nintendo Switch, GOG, 
 
 | Column            | Type    | Notes                                         |
 |-------------------|---------|-----------------------------------------------|
-| id                | TEXT PRIMARY KEY | Unique platform identifier                 |
-| name              | TEXT UNIQUE NOT NULL | Platform name (e.g., "Steam", "PS5")      |
+| id                | TEXT PRIMARY KEY | Unique platform identifier (e.g., "playstation_5") |
+| name              | TEXT UNIQUE NOT NULL | Platform name (e.g., "PlayStation 5") |
 | supports_digital  | BOOLEAN | Whether this platform supports digital distribution |
 | supports_physical | BOOLEAN | Whether this platform supports physical distribution |
 | icon_url          | TEXT    | URL or path to platform icon                  |
 | image_url         | TEXT    | URL or path to platform image                 |
 | description       | TEXT    | Platform description or notes                 |
 | year_acquired     | INTEGER | Year you acquired this platform               |
+| generation        | INTEGER | Console generation (e.g., 8, 9)               |
+| manufacturer      | TEXT    | Platform manufacturer (e.g., "Sony")          |
 | created_at        | TIMESTAMP | Record creation timestamp                   |
 | updated_at        | TIMESTAMP | Record last update timestamp                |
 
-TE `games` table
+THE `games` table
 Represents games in your collection, with metadata and relationships to platforms.
 
 | Column            | Type        | Notes                                          |
@@ -67,7 +69,15 @@ Represents games in your collection, with metadata and relationships to platform
 | is_derived_work   | BOOLEAN     | Whether this is a remake or remaster of another game |
 | is_sequel         | BOOLEAN     | Whether this is a sequel to another game       |
 | related_game_id   | INTEGER     | Foreign key to another game (if derived or sequel) |
-| tags              | TEXT        | JSON array of tags (e.g., ["action", "RPG", "indie"]) |
+| tags              | TEXT        | JSON array of tags (e.g., `["action", "RPG"]`) |
+| igdb_id           | INTEGER     | ID from the Internet Game Database (IGDB)      |
+| esrb_rating       | TEXT        | ESRB rating (e.g., "T", "M")                   |
+| genre             | TEXT        | Comma-separated list of genres (e.g., "Action, RPG") |
+| target_audience   | TEXT        | Comma-separated list of target audiences     |
+| developer         | TEXT        | Comma-separated list of developers           |
+| publisher         | TEXT        | Comma-separated list of publishers           |
+| plot_synopsis     | TEXT        | Detailed plot summary                          |
+| notes             | TEXT        | Personal notes about the game                  |
 | created_at        | TIMESTAMP   | Record creation timestamp                      |
 | updated_at        | TIMESTAMP   | Record last update timestamp                   |
 
@@ -165,6 +175,7 @@ Features
    - Auto-populate cover art, descriptions, release dates, genres, platforms, keywords, etc.
    - Link local games to IGDB IDs for future syncing
    - TODO: Handle API rate limits and caching
+ - [x] INFINITE SCROLL OPTION - don't like old-school pages?  you can "Infinite Scroll"
 
 TODO   
 1. AI Enrichment -- Supplement game data using AI:
