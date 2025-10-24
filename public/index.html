@@ -65,7 +65,7 @@
                         <option value="platform_count_desc">Platform Count (Most)</option>
                         <option value="platform_count_asc">Platform Count (Fewest)</option>
                     </select>
-                    <select id="sort-select-platforms" style="display: none;">
+                    <select id="sort-select-platforms" style="display: none;" class="sort-select">
                         <option value="name_asc" selected>Name (A-Z)</option>
                         <option value="name_desc">Name (Z-A)</option>
                         <option value="game_count_desc">Game Count (Most)</option>
@@ -76,17 +76,20 @@
                         <option value="generation_desc">Generation (Newest)</option>
                         <option value="generation_asc">Generation (Oldest)</option>
                     </select>
-                    <label for="items-per-page-select">Per Page:</label>
-                    <select id="items-per-page-select">
-                        <option value="12">12</option>
-                        <option value="24" selected>24</option>
-                        <option value="48">48</option>
-                        <option value="96">96</option>
-                    </select>
+                    <div id="per-page-controls" style="display: inline-flex; align-items: center; gap: 8px;">
+                        <label for="items-per-page-select">Per Page:</label>
+                        <select id="items-per-page-select">
+                            <option value="12">12</option>
+                            <option value="24" selected>24</option>
+                            <option value="48">48</option>
+                            <option value="96">96</option>
+                        </select>
+                    </div>
                 </div>
 
                 <div class="right-controls" id="games-controls">
                     <button id="btn-select-multiple" class="btn btn-sm">☑ Select</button>
+                    <button id="btn-infinite-scroll" class="btn btn-sm">📜 Infinite Scroll</button>
                     <button id="btn-filter" class="btn btn-sm">🔍 Filter</button>
                     <button id="btn-display" class="btn btn-sm">🖼 Display</button>
                     <span id="active-filters" class="active-filters"></span>
@@ -113,6 +116,9 @@
             <!-- Bottom pagination controls -->
             <section id="pagination-bottom" class="pagination-controls">
             </section>
+
+            <!-- Loading indicator for infinite scroll -->
+            <div id="infinite-scroll-loader" class="loader-container hidden"></div>
         </main>
     </div>
 

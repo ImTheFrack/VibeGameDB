@@ -70,6 +70,10 @@ export const state = {
     pageSize: 24, // Number of items to load per page/scroll
     totalPages: 1,
   },
+  infiniteScroll: {
+    enabled: false,
+    isLoading: false, // Prevent multiple loads
+  },
   selection: {
     enabled: false,
     selectedGameIds: new Set(),

@@ -1,6 +1,6 @@
 'use strict';
 import { state, clearAllFilters } from './state.js';
-import { fetchGames as fetchGamesFromApi, fetchPlatforms as fetchPlatformsFromApi, fetchAutocomplete, postBulkOperation, fetchFromIgdb } from './api.js';
+import { fetchGames as fetchGamesFromApi, fetchPlatforms as fetchPlatformsFromApi, fetchAutocomplete, postBulkOperation, fetchFromIgdb, fetchGamePlatforms as fetchGamePlatformsFromApi } from './api.js';
 import { renderGames, renderPlatforms, renderBulkActionsBar, renderAutocomplete } from './render.js';
 import { applyFilters, extractAllTags, updateActiveFiltersDisplay, updateTabCounts } from './filters.js';
 import { openModal, closeModal, populateFilterModal, populateAddToPlatformForm, showEditGameModal, showBulkEditGameModal, showEditPlatformModal, populateGamePlatformsList, clearAutocomplete, initAutocomplete, resetGameModalUI, showProgressModal, updateProgress, showBulkMatchModal } from './modals.js';
@@ -17,6 +17,17 @@ import { normalizeName } from './utils.js';
  * Keeping this isolated ensures rendering and filtering modules remain pure
  * and testable (no direct DOM event concerns there).
  */
+
+const handlePaginationClick = (e) => {
+  // alert ("Clicked");
+  e.preventDefault();
+  const link = e.target.closest('.page-link');
+  if (!link || link.classList.contains('disabled') || link.classList.contains('current')) return;
+  const newPage = parseInt(link.dataset.page, 10);
+  if (isNaN(newPage)) return;
+  state.pagination.currentPage = newPage;
+  applyFilters();
+};
 
 // Data loaders used by tab switch and initial load
 async function fetchGames() {
@@ -88,6 +99,8 @@ export function wireDomEvents() {
   const itemsPerPageSelect = document.getElementById('items-per-page-select');
   const btnSelectMultiple = document.getElementById('btn-select-multiple');
   const headerSearch = document.getElementById('search-input');
+  const btnInfiniteScroll = document.getElementById('btn-infinite-scroll');
+  const bulkActionBar = document.getElementById('bulk-actions-bar');
 
   const autocompleteResults = document.getElementById('autocomplete-results');
   const platformFiltersContainer = document.querySelector('.platform-filters')
@@ -126,6 +139,99 @@ export function wireDomEvents() {
     renderBulkActionsBar();
   });
 
+  // --- Infinite Scroll ---
+  const perPageControls = document.getElementById('per-page-controls');
+  const paginationTop = document.getElementById('pagination-top');
+  const paginationBottom = document.getElementById('pagination-bottom');
+  const loader = document.getElementById('infinite-scroll-loader');
+
+  const handleScroll = async () => {
+    const { infiniteScroll, pagination } = state;
+    const buffer = 5; // 5-pixel buffer to reliably trigger loading
+    // Check if we should load more content
+    if (
+      infiniteScroll.enabled &&
+      !infiniteScroll.isLoading &&
+      pagination.currentPage < pagination.totalPages &&
+      (window.innerHeight + window.scrollY) >= document.documentElement.scrollHeight - buffer
+    ) {
+      infiniteScroll.isLoading = true;
+      if (loader) loader.classList.remove('hidden');
+      pagination.currentPage++;
+      await applyFilters(true); // Pass true to indicate it's an append operation
+      infiniteScroll.isLoading = false;
+      if (loader) loader.classList.add('hidden');
+    }
+  };
+
+  btnInfiniteScroll.addEventListener('click', () => {
+    state.infiniteScroll.enabled = !state.infiniteScroll.enabled;
+    btnInfiniteScroll.classList.toggle('infinite-scroll-on', state.infiniteScroll.enabled);
+
+    if (state.infiniteScroll.enabled) {
+      btnInfiniteScroll.textContent = '📜 Scroll On';
+      window.addEventListener('scroll', handleScroll);
+    } else {
+      btnInfiniteScroll.textContent = '📜 Infinite Scroll';
+      window.removeEventListener('scroll', handleScroll);
+      // When turning off, reset to page 1 to show a predictable view.
+      state.pagination.currentPage = 1;
+    }
+    applyFilters(); // Re-render games and pagination
+    renderBulkActionsBar(); // Re-render the bulk bar to show/hide "Select Page"
+  });
+
+  // Bulk Actions Bar
+  if (bulkActionBar) {
+    bulkActionBar.addEventListener('click', async (e) => {
+      const button = e.target.closest('button');
+      if (!button) return;
+
+      const id = button.id;
+      const selectedSet = state.currentTab === 'games' ? state.selection.selectedGameIds : state.selection.selectedPlatformIds;
+
+      if (id === 'bulk-select-page') {
+        // Select all visible items on the current page
+        document.querySelectorAll('#display-grid .card').forEach(card => {
+          const gameId = card.dataset.gameId;
+          if (gameId) selectedSet.add(gameId);
+        });
+      } else if (id === 'bulk-select-all-filtered') {
+        // Select all items that match the current filters (across all pages)
+        state.filteredGames.forEach(game => selectedSet.add(String(game.id)));
+      } else if (id === 'bulk-select-none') {
+        // Deselect all
+        selectedSet.clear();
+      } else if (id === 'bulk-select-inverse') {
+        // Invert selection for the current page
+        document.querySelectorAll('#display-grid .card').forEach(card => {
+          const gameId = card.dataset.gameId;
+          if (gameId) {
+            if (selectedSet.has(gameId)) {
+              selectedSet.delete(gameId);
+            } else {
+              selectedSet.add(gameId);
+            }
+          }
+        });
+      } else if (id === 'bulk-action-edit') {
+        // Open the bulk edit modal
+        if (state.currentTab === 'games') {
+          if (selectedSet.size > 0) {
+            await showBulkEditGameModal();
+          } else {
+            alert('Please select at least one game to edit.');
+          }
+        } else {
+          alert('Bulk editing for platforms is not yet supported.');
+        }
+      }
+
+      // After any bulk action, re-render the grid and the bar to reflect changes
+      applyFilters();
+      renderBulkActionsBar();
+    });
+  }
 
 
   // Add Game
@@ -933,6 +1039,7 @@ export function wireDomEvents() {
       const selMode = document.querySelector('input[name="platform_mode"]:checked');
       const platformAnd = selMode ? (selMode.value === 'and') : undefined;
       state.currentFilters = { keyword, platforms, tags, platformAnd, gameTypes, acquisitionMethods, manufacturers, genres, developers, publishers, esrbRatings, targetAudiences, releaseYearMin, releaseYearMax };
+      state.pagination.currentPage = 1; // Reset to page 1 on new filter application
       applyFilters();
       closeModal(modalFilter, btnFilter);
       renderBulkActionsBar();
@@ -946,6 +1053,7 @@ export function wireDomEvents() {
     btnClearFilters.addEventListener('click', (e) => {
       e.preventDefault();
       clearAllFilters();
+      state.pagination.currentPage = 1; // Reset to page 1 when clearing filters
       applyFilters();
       updateActiveFiltersDisplay();
       renderBulkActionsBar();
@@ -1000,11 +1108,23 @@ export function wireDomEvents() {
       return;
     }
     if (tagSpan) {
-      const t = tagSpan.getAttribute('data-tag');
-      if (!t) return;
-      const idx = state.currentFilters.tags.indexOf(t);
-      if (idx === -1) state.currentFilters.tags.push(t); else state.currentFilters.tags.splice(idx, 1);
-      document.querySelectorAll('#filter-tags input[type="checkbox"]').forEach(cb => cb.checked = state.currentFilters.tags.includes(cb.value));
+      const type = tagSpan.dataset.type;
+      const value = tagSpan.dataset.value;
+      if (!value || !type) return;
+
+      let filterArray, filterCheckboxesSelector;
+      if (type === 'genre') {
+        filterArray = state.currentFilters.genres;
+        filterCheckboxesSelector = '#filter-genre input[type="checkbox"]';
+      } else { // Default to 'tag'
+        filterArray = state.currentFilters.tags;
+        filterCheckboxesSelector = '#filter-tags input[type="checkbox"]';
+      }
+
+      const idx = filterArray.indexOf(value);
+      if (idx === -1) filterArray.push(value); else filterArray.splice(idx, 1);
+
+      document.querySelectorAll(filterCheckboxesSelector).forEach(cb => cb.checked = filterArray.includes(cb.value));
       applyFilters();
       updateActiveFiltersDisplay();
       renderBulkActionsBar();
@@ -1061,260 +1181,6 @@ export function wireDomEvents() {
     });
   }
 
-  // --- Pagination via Event Delegation ---
-  function handlePaginationClick(e) {
-    e.preventDefault();
-    const link = e.target.closest('.page-link');
-    if (!link || link.classList.contains('disabled') || link.classList.contains('current')) {
-      return;
-    }
-    state.pagination.currentPage = parseInt(link.dataset.page, 10);
-    applyFilters();
-  }
-
-  const paginationTop = document.getElementById('pagination-top');
-  const paginationBottom = document.getElementById('pagination-bottom');
-  if (paginationTop) paginationTop.addEventListener('click', handlePaginationClick);
-  if (paginationBottom) paginationBottom.addEventListener('click', handlePaginationClick);
-
-  // --- Bulk Action Bar Events ---
-  const bulkActionBar = document.getElementById('bulk-actions-bar');
-  if (bulkActionBar) {
-    bulkActionBar.addEventListener('click', async (e) => {
-      const targetId = e.target.id;
-      const selectedSet = state.currentTab === 'games' ? state.selection.selectedGameIds : state.selection.selectedPlatformIds;
-
-      if (targetId === 'bulk-select-all-filtered') {
-        state.filteredGames.forEach(game => selectedSet.add(String(game.id)));
-        applyFilters(); // Re-render to show checked status
-        renderBulkActionsBar();
-      }
-
-      if (targetId === 'bulk-select-page') {
-        const start = (state.pagination.currentPage - 1) * state.pagination.pageSize;
-        const end = start + state.pagination.pageSize;
-        const pageGames = state.filteredGames.slice(start, end);
-        pageGames.forEach(game => selectedSet.add(String(game.id)));
-        applyFilters(); // Re-render
-        renderBulkActionsBar();
-      }
-
-      if (targetId === 'bulk-select-none') {
-        selectedSet.clear();
-        applyFilters(); // Re-render
-        renderBulkActionsBar();
-      }
-
-      if (targetId === 'bulk-select-inverse') {
-        const allIds = new Set(state.filteredGames.map(g => String(g.id)));
-        const currentSelection = new Set(selectedSet); // Make a copy
-
-        allIds.forEach(id => {
-          if (currentSelection.has(id)) {
-            selectedSet.delete(id);
-          } else {
-            selectedSet.add(id);
-          }
-        });
-        applyFilters(); // Re-render
-        renderBulkActionsBar();
-      }
-
-      if (targetId === 'bulk-action-edit') {
-        if (selectedSet.size === 0) {
-          alert('Please select at least one item to edit.');
-          return;
-        }
-        // Populate and open the bulk edit modal
-        const bulkEditCount = document.getElementById('bulk-edit-count');
-        bulkEditCount.textContent = selectedSet.size;
-
-        // Populate platform dropdowns
-        const assignSelect = modalBulkEdit.querySelector('#bulk-assign-platform-select');
-        const removeSelect = modalBulkEdit.querySelector('#bulk-remove-platform-select');
-        assignSelect.innerHTML = '';
-        removeSelect.innerHTML = '';
-        state.allPlatforms.forEach(p => {
-          if (assignSelect) assignSelect.add(new Option(p.name, p.id));
-          if (removeSelect) removeSelect.add(new Option(p.name, p.id));
-        });
-
-        // Show/hide game-specific options
-        const platformOptions = modalBulkEdit.querySelectorAll('.bulk-action-button-row');
-        platformOptions.forEach(opt => {
-          opt.style.display = 'flex'; // Always show for games
-        });
-        const editFieldsButton = modalBulkEdit.querySelector('#bulk-btn-edit-fields');
-        if (editFieldsButton) editFieldsButton.style.display = 'block'; // Always show for games
-
-        openModal(modalBulkEdit);
-      }
-    });
-  }
-
-  // --- Bulk Edit Modal Action Buttons ---
-  const bulkActionsContainer = document.getElementById('bulk-actions-container');
-  if (bulkActionsContainer) {
-    bulkActionsContainer.addEventListener('click', async (e) => {
-      const button = e.target.closest('[data-action]');
-      if (!button) return;
-
-      const action = button.dataset.action;
-      const itemType = state.currentTab === 'games' ? 'game' : 'platform';
-      const ids = Array.from(itemType === 'game' ? state.selection.selectedGameIds : state.selection.selectedPlatformIds);
-      const bulkPullMethod = document.querySelector('input[name="bulk_igdb_pull_method"]:checked').value;
-
-      /**
-       * A less aggressive normalization for comparing titles.
-       * It standardizes case and whitespace but preserves punctuation.
-       * @param {string} name The title to normalize.
-       */
-      const normalizeForComparison = (name) => {
-        return (name || '').toLowerCase().replace(/\s+/g, ' ').trim();
-      };
-
-      button.disabled = true;
-      const originalButtonText = button.textContent;
-
-      if (action === 'edit_fields') {
-        closeModal(modalBulkEdit);
-        button.disabled = false; // Re-enable button
-        await showBulkEditGameModal();
-        return;
-      }
-
-      if (action === 'pull_igdb') {
-        if (!confirm(`This will attempt to fetch data from IGDB for ${ids.length} game(s), potentially overwriting existing data. Do you want to proceed?`)) {
-          button.disabled = false; // Re-enable if user cancels
-          return;
-        }
-        closeModal(modalBulkEdit);
-        showProgressModal('Pulling from IGDB');
-        let processed = 0;
-        let failures = 0;
-        const conflictingUpdates = [];
-        const multiMatchUpdates = [];
-
-        for (const gameId of ids) {
-          const game = state.allGames.find(g => String(g.id) === gameId);
-          if (!game || !game.name) continue;
-          let currentProcessed = processed + conflictingUpdates.length + multiMatchUpdates.length + failures;
-
-          // Determine primary and fallback search parameters based on bulk pull method
-          const primaryTitle = bulkPullMethod === 'name' ? game.name : null;
-          const primaryId = bulkPullMethod === 'id' ? game.igdb_id : null;
-          const fallbackTitle = bulkPullMethod === 'id' ? game.name : null;
-          const fallbackId = bulkPullMethod === 'name' ? game.igdb_id : null;
-
-          let result = await fetchFromIgdb(primaryTitle, primaryId);
-          if (!result || (!result.game_data && !result.game_choices)) {
-            result = await fetchFromIgdb(fallbackTitle, fallbackId);
-          }
-
-          let dataToUpdate = null;
-          if (result && result.game_data) {
-            dataToUpdate = result.game_data;
-          } else if (bulkPullMethod === 'name' && result && result.game_choices && result.game_choices.length > 0) {
-            // If pulling by name and we get multiple results, cache them for the user to resolve later.
-            multiMatchUpdates.push({
-              gameId: gameId,
-              localName: game.name,
-              choices: result.game_choices
-            });
-            updateProgress(currentProcessed + 1, ids.length, { Failures: failures, Conflicts: conflictingUpdates.length, 'Multi-Match': multiMatchUpdates.length });
-            continue; // Skip immediate processing
-          }
-
-          if (!dataToUpdate) {
-            failures++;
-            updateProgress(currentProcessed + 1, ids.length, { Failures: failures, Conflicts: conflictingUpdates.length, 'Multi-Match': multiMatchUpdates.length });
-            continue;
-          }
-          
-          if (dataToUpdate) {
-            // **Safety Check**: If pulling by name, ensure the result name matches the local name.
-            // If it doesn't match, cache it for later confirmation instead of applying it now.
-            if (bulkPullMethod === 'name' && normalizeForComparison(dataToUpdate.name) !== normalizeForComparison(game.name)) {
-              console.warn(`Caching conflicting IGDB update for "${game.name}". Found: "${dataToUpdate.name}".`);
-              conflictingUpdates.push({
-                gameId: gameId,
-                localName: game.name,
-                igdbData: dataToUpdate
-              });
-              updateProgress(currentProcessed + 1, ids.length, { Failures: failures, Conflicts: conflictingUpdates.length, 'Multi-Match': multiMatchUpdates.length });
-              continue; // Don't process this one immediately
-            }
-
-            const res = await fetch(`/plugins/database_handler/games/${gameId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dataToUpdate) });
-            if (!res.ok) console.error(`Failed to update game ${gameId}`);
-            processed++;
-          }
-          updateProgress(processed + conflictingUpdates.length + multiMatchUpdates.length + failures, ids.length, { Failures: failures, Conflicts: conflictingUpdates.length, 'Multi-Match': multiMatchUpdates.length });
-        }
-        
-        closeModal(document.getElementById('modal-progress'));
-        if (conflictingUpdates.length > 0) {
-          let conflictSummary = `The following ${conflictingUpdates.length} game(s) had name mismatches:\n\n`;
-          conflictingUpdates.forEach(conflict => {
-            conflictSummary += `  - Local: "${conflict.localName}"\n    IGDB:  "${conflict.igdbData.name}"\n`;
-          });
-          conflictSummary += '\nDo you want to apply these updates anyway?';
-
-          if (confirm(conflictSummary)) {
-            for (const conflict of conflictingUpdates) {
-              await fetch(`/plugins/database_handler/games/${conflict.gameId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(conflict.igdbData) });
-            }
-            alert(`Applied ${conflictingUpdates.length} conflicting update(s) after confirmation.`);
-          } else {
-            alert(`Skipped ${conflictingUpdates.length} conflicting update(s).`);
-          }
-        }
-
-        // Step 2: Handle multi-matches
-        if (multiMatchUpdates.length > 0) {
-          showBulkMatchModal(multiMatchUpdates, async () => {
-            await fetchGames(); // Refresh data after the match modal is closed
-          });
-        } else {
-          // If there were no multi-matches, refresh immediately.
-          await fetchGames();
-        }
-
-        button.disabled = false; // Re-enable button after completion
-        button.textContent = originalButtonText;
-        return;
-      }
-
-      if (action === 'delete' && !confirm(`Are you sure you want to delete ${ids.length} item(s)? This cannot be undone.`)) {
-        return;
-      }
-
-      const payload = {
-        action: action,
-        item_type: itemType,
-        ids: ids,
-        params: {}
-      };
-
-      if (action === 'assign_platform') payload.params.platform_id = document.getElementById('bulk-assign-platform-select').value;
-      if (action === 'remove_platform') payload.params.platform_id = document.getElementById('bulk-remove-platform-select').value;
-
-      const result = await postBulkOperation(payload);
-      alert(result.message || 'Bulk operation completed.');
-      closeModal(modalBulkEdit);
-      state.selection.enabled = false; // Disable selection mode after an action
-      // Refresh all data in the background, then re-render the current tab's view
-      await Promise.all([fetchGamesFromApi(), fetchPlatformsFromApi()]).then(([gameData, platformData]) => {
-        if (gameData) { state.allGames = gameData.games || []; state.allGamePlatforms = gameData.game_platforms || []; }
-        if (platformData) { state.allPlatforms = platformData.platforms || []; }
-        if (state.currentTab === 'games') applyFilters(); else renderPlatforms(state.allPlatforms);
-      });
-
-      button.disabled = false;
-      button.textContent = originalButtonText;
-    });
-  }
-
   // --- In-Modal Platform Management ---
 
   document.getElementById('btn-associate-platform').addEventListener('click', async () => {
@@ -1347,4 +1213,18 @@ export function wireDomEvents() {
       }
     }
   });
+
+  // Wire pagination events initially. They will be re-wired on each render.
+  wirePaginationEvents();
+}
+
+/**
+ * Wires up click events for pagination controls using event delegation.
+ * This function is called by renderPagination to ensure listeners are always attached.
+ */
+export function wirePaginationEvents() {
+  const paginationTop = document.getElementById('pagination-top');
+  const paginationBottom = document.getElementById('pagination-bottom');
+  if (paginationTop) { paginationTop.removeEventListener('click', handlePaginationClick); paginationTop.addEventListener('click', handlePaginationClick); }
+  if (paginationBottom) { paginationBottom.removeEventListener('click', handlePaginationClick); paginationBottom.addEventListener('click', handlePaginationClick); }
 }

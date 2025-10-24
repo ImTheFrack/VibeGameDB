@@ -1,5 +1,6 @@
 'use strict';
 import { state } from './state.js';
+import { wirePaginationEvents } from './events.js';
 import { escapeHtml, normalizeName } from './utils.js';
 
 /**
@@ -19,10 +20,14 @@ import { escapeHtml, normalizeName } from './utils.js';
  */
 export function renderGames(games) {
     const grid = document.getElementById('display-grid');
-    grid.innerHTML = '';
-    const { selection } = state;
+    const { selection, infiniteScroll } = state;
 
-    if (!games || games.length === 0) {
+    // If not in infinite scroll mode, clear the grid first.
+    if (!infiniteScroll.enabled || state.pagination.currentPage === 1) {
+        grid.innerHTML = '';
+    }
+
+    if ((!games || games.length === 0) && grid.innerHTML === '') {
         grid.innerHTML = '<p class="muted">No games found. Try adjusting your filters or adding a new game.</p>';
         return;
     }
@@ -61,9 +66,12 @@ export function renderGames(games) {
         if (state.displayOptions.show_tags) {
             const gameTags = game.tags || [];
             const gameGenres = game.genre ? game.genre.split(',').map(g => g.trim()) : []; // Already trimmed
-            const combined = [...new Set([...gameTags, ...gameGenres])].filter(Boolean).sort((a, b) => a.localeCompare(b));
-            if (combined.length > 0) {
-                tagsAndGenresHtml = combined.map(item => `<span class="tag" data-tag="${escapeHtml(item.toLowerCase())}">${escapeHtml(item.toLowerCase())}</span>`).join(' ');
+            const tagsHtml = gameTags.map(tag => `<span class="tag" data-type="tag" data-value="${escapeHtml(tag.toLowerCase())}">${escapeHtml(tag.toLowerCase())}</span>`).join(' ');
+            const genresHtml = gameGenres.map(genre => `<span class="tag" data-type="genre" data-value="${escapeHtml(genre.toLowerCase())}">${escapeHtml(genre.toLowerCase())}</span>`).join(' ');
+
+            // Combine and sort for consistent display order
+            if (tagsHtml || genresHtml) {
+                tagsAndGenresHtml = [tagsHtml, genresHtml].filter(Boolean).join(' ');
             }
         }
         
@@ -207,6 +215,7 @@ export function renderBulkActionsBar() {
   const countEl = document.getElementById('bulk-actions-count');
   const btnSelect = document.getElementById('btn-select-multiple');
   const btnBulkEdit = document.getElementById('bulk-action-edit');
+  const btnSelectPage = document.getElementById('bulk-select-page');
 
   const selectedCount = state.currentTab === 'games'
     ? state.selection.selectedGameIds.size
@@ -217,6 +226,11 @@ export function renderBulkActionsBar() {
   if (state.selection.enabled) {
     bar.style.display = 'flex';
     countEl.textContent = `${selectedCount} item${selectedCount !== 1 ? 's' : ''} selected`;
+
+    // Hide "Select Page" button if infinite scroll is on, as "pages" don't exist.
+    if (btnSelectPage) {
+      btnSelectPage.style.display = state.infiniteScroll.enabled ? 'none' : 'inline-block';
+    }
 
     // Disable the edit button if no items are selected or if on the platforms tab.
     const canBulkEdit = state.currentTab === 'games' && selectedCount > 0;
@@ -241,11 +255,13 @@ export function renderBulkActionsBar() {
  */
 export function renderPagination() {
   const { currentPage, totalPages } = state.pagination;
+  const { infiniteScroll } = state;
   const topContainer = document.getElementById('pagination-top');
   const bottomContainer = document.getElementById('pagination-bottom');
+  const perPageControls = document.getElementById('per-page-controls'); // Get per-page controls here
 
-  if (!topContainer || !bottomContainer) return;
-
+  if (!topContainer || !bottomContainer || !perPageControls) return; // Ensure all elements exist
+  
   if (totalPages <= 1) {
     topContainer.innerHTML = '';
     bottomContainer.innerHTML = '';
@@ -274,21 +290,37 @@ export function renderPagination() {
   const buildPagination = () => {
     const fragment = document.createDocumentFragment();
 
-    const windowSize = 2; // Number of page links to show on each side of the current page
+    const window = 2; // Number of pages to show on each side of the current page
+    let start = Math.max(2, currentPage - window);
+    let end = Math.min(totalPages - 1, currentPage + window);
 
     // First and Previous buttons
     fragment.appendChild(createPageLink(1, '« First (1)', currentPage === 1));
     fragment.appendChild(createPageLink(currentPage - 1, '‹ Prev', currentPage === 1));
 
-    // Render a fixed number of page links, using placeholders for out-of-bounds pages
-    for (let i = -windowSize; i <= windowSize; i++) {
-      const page = currentPage + i;
-      if (page >= 1 && page <= totalPages) {
-        fragment.appendChild(createPageLink(page, page, false, page === currentPage));
-      } else {
-        fragment.appendChild(createEllipsis());
-      }
+    // Always show page 1
+    fragment.appendChild(createPageLink(1, 1, false, currentPage === 1));
+
+    // Ellipsis after page 1 if needed
+    if (start > 2) {
+      fragment.appendChild(createEllipsis());
     }
+
+    // Page numbers in the sliding window
+    for (let i = start; i <= end; i++) {
+      fragment.appendChild(createPageLink(i, i, false, i === currentPage));
+    }
+
+    // Ellipsis before the last page if needed
+    if (end < totalPages - 1) {
+      fragment.appendChild(createEllipsis());
+    }
+
+    // Always show the last page, if it's not page 1
+    if (totalPages > 1) {
+      fragment.appendChild(createPageLink(totalPages, totalPages, false, currentPage === totalPages));
+    }
+
 
     // Next and Last buttons
     fragment.appendChild(createPageLink(currentPage + 1, 'Next ›', currentPage === totalPages));
@@ -300,6 +332,15 @@ export function renderPagination() {
   bottomContainer.innerHTML = '';
   topContainer.appendChild(buildPagination());
   bottomContainer.appendChild(buildPagination());
+
+  // Hide pagination controls and per-page selector if infinite scroll is enabled or only one page exists
+  const shouldHide = infiniteScroll.enabled || totalPages <= 1;
+  topContainer.classList.toggle('hidden', shouldHide);
+  bottomContainer.classList.toggle('hidden', shouldHide);
+  perPageControls.classList.toggle('hidden', shouldHide); // Apply to per-page controls too
+
+  // Always re-wire events after re-rendering the DOM for pagination
+  wirePaginationEvents();
 }
 
 export function renderAutocomplete(suggestions, container = null, footerText = null) {

@@ -69,8 +69,8 @@ export function updateActiveFiltersDisplay() {
 /**
  * Applies all current filters and sorting to the game list, then re-renders.
  */
-export function applyFilters() {
-  if (state.currentTab !== 'games') {
+export function applyFilters(isAppending = false) {
+  if (state.currentTab !== 'games' && !isAppending) {
     renderGames([]);
     return;
   }
@@ -108,7 +108,7 @@ export function applyFilters() {
 
   if (genres.length > 0) {
     const genreSet = new Set(genres);
-    filtered = filtered.filter(g => g.genre && g.genre.split(',').map(i => i.trim()).some(i => genreSet.has(i)));
+    filtered = filtered.filter(g => g.genre && g.genre.split(',').map(i => i.trim().toLowerCase()).some(i => genreSet.has(i)));
   }
 
   if (manufacturers.length > 0) {
@@ -194,7 +194,9 @@ export function applyFilters() {
 
   // Pagination
   state.pagination.totalPages = Math.ceil(state.filteredGames.length / state.pagination.pageSize);
-  if (state.pagination.currentPage > state.pagination.totalPages) state.pagination.currentPage = 1;
+  if (!isAppending && state.pagination.currentPage > state.pagination.totalPages) {
+    state.pagination.currentPage = 1;
+  }
   const start = (state.pagination.currentPage - 1) * state.pagination.pageSize;
   const end = start + state.pagination.pageSize;
   const paginatedGames = state.filteredGames.slice(start, end);
