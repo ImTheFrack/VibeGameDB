@@ -50,6 +50,16 @@ export const state = {
     gameTypes: [],
     /** Array of selected acquisition methods */
     acquisitionMethods: [],
+    /** Array of selected ESRB ratings */
+    esrbRatings: [],
+    /** Array of selected genres */
+    genres: [],
+    /** Array of selected target audiences */
+    targetAudiences: [],
+    /** Array of selected platform generations */
+    platformGenerations: [],
+    /** Array of selected platform manufacturers */
+    platformManufacturers: [],
   },
   pagination: {
     currentPage: 1,
@@ -69,6 +79,11 @@ export function clearAllFilters() {
   state.currentFilters.tags = [];
   state.currentFilters.gameTypes = [];
   state.currentFilters.acquisitionMethods = [];
+  state.currentFilters.esrbRatings = [];
+  state.currentFilters.genres = [];
+  state.currentFilters.targetAudiences = [];
+  state.currentFilters.platformGenerations = [];
+  state.currentFilters.platformManufacturers = [];
   state.selection.selectedGameIds.clear();
   state.selection.selectedPlatformIds.clear();
   document.getElementById('search-input').value = '';
