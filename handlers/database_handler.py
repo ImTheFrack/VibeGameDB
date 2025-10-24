@@ -582,7 +582,20 @@ def _autocomplete(conn: sqlite3.Connection, qparams: Dict[str, List[str]], limit
     query_words = normalized_query.split()
     
     # --- Stage 1: Exact and Prefix Matches ---
-    exact_search_term = f'{query}*'
+    # Sanitize the query for FTS5. This robustly handles special characters,
+    # user-typed quotes, and unclosed phrases.
+
+    # 1. Escape any literal double quotes in the user's query by doubling them.
+    sanitized_query = query.replace('"', '""')
+
+    # 2. If the original query has an odd number of quotes, the user is likely
+    #    in the middle of typing a phrase. We append a closing quote to fix it.
+    if query.count('"') % 2 != 0:
+        sanitized_query += '""'
+
+    # 3. Wrap the entire result in quotes to form a valid FTS5 phrase query.
+    exact_search_term = f'"{sanitized_query}"*'
+
     print(f"Stage 1: FTS5 exact/prefix search for '{exact_search_term}'")
     cur = conn.cursor()
     cur.execute("""
@@ -618,8 +631,10 @@ def _autocomplete(conn: sqlite3.Connection, qparams: Dict[str, List[str]], limit
     # If the query is longer and we found exact prefixes, we can stop early.
     if len(suggestions) < limit : # and (len(suggestions) == 0 or len(query) < 3)
         print(f"Stage 2: Not enough suggestions from Stage 1 ({len(suggestions)}/{limit}). Proceeding with FTS5 word-based fuzzy search.")
+        # Sanitize the original query for use in the fuzzy term to prevent errors from unclosed quotes.
+        sanitized_original_query = query.replace('"', '""')
         or_terms = ' OR '.join(query_words)
-        fuzzy_term = f"({or_terms}) OR \"{query}*\""
+        fuzzy_term = f"({or_terms}) OR \"{sanitized_original_query}*\""
         
         cur.execute("""
             SELECT row_id, item_type, name, context, rank

@@ -1,5 +1,5 @@
 """
-CSV import handler (skeleton).
+CSV and IDGB import handler (skeleton).
 
 This handler implements a lightweight CSV import workflow used by the
 frontend during import. It exposes the following logical operations via
@@ -40,6 +40,10 @@ except Exception:
     class _C:
         DATABASE_FILE = os.path.join('data', 'gamedb.sqlite')
         AI_ENDPOINT_URL = None
+        IGDB_CLIENT_ID = None
+        IGDB_CLIENT_SECRET = None
+        IGDB_AUTH_URL = "https://id.twitch.tv/oauth2/token"
+        IGDB_API_URL = "https://api.igdb.com/v4"
     config = _C()
 
 
@@ -316,6 +320,149 @@ def _call_ai_suggest(title: str) -> List[str]:
         return []
 
 
+def _get_igdb_token():
+    """
+    Fetches an IGDB access token using client credentials.
+    In a real app, this token should be cached until it expires.
+    """
+    print("[IGDB] Attempting to get IGDB auth token...")
+    client_id = getattr(config, 'IGDB_CLIENT_ID', None)
+    client_secret = getattr(config, 'IGDB_CLIENT_SECRET', None)
+    auth_url = getattr(config, 'IGDB_AUTH_URL', None)
+
+    print(f"[IGDB] Using Client ID: {''.join(list(client_id)[:4])}...")
+    if not all([client_id, client_secret, auth_url]) or 'your_client_id' in client_id:
+        err_msg = "IGDB credentials not configured in config.py"
+        print(f"[IGDB] ERROR: {err_msg}")
+        return None, "IGDB credentials not configured in config.py"
+
+    params = {
+        'client_id': client_id,
+        'client_secret': client_secret,
+        'grant_type': 'client_credentials'
+    }
+    print(f"[IGDB] Auth request params (secret redacted): { {k:v for k,v in params.items() if k != 'client_secret'} }")
+    data = urllib.parse.urlencode(params).encode('utf-8')
+    req = urllib.request.Request(auth_url, data=data)
+
+    try:
+        print(f"[IGDB] Making POST request to auth URL: {auth_url}")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            if resp.status != 200:
+                err_msg = f"Failed to get token, status: {resp.status}"
+                print(f"[IGDB] ERROR: {err_msg}")
+                return None, err_msg
+            result = json.loads(resp.read().decode('utf-8'))
+            print(f"[IGDB] Successfully received token (expires in {result.get('expires_in')}s).")
+            return result.get('access_token'), None
+    except Exception as e:
+        print(f"[IGDB] EXCEPTION during token fetch: {e}")
+        return None, f"Error fetching IGDB token: {e}"
+
+
+def _fetch_igdb_data(token: str, title: Optional[str] = None, igdb_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    """
+    Fetches game data from IGDB by title or ID.
+    Returns the first and most relevant game object from the IGDB API response.
+    """
+    print(f"[IGDB] Fetching data from IGDB API. Title: '{title}', ID: {igdb_id}")
+    client_id = getattr(config, 'IGDB_CLIENT_ID', None)
+    api_url = getattr(config, 'IGDB_API_URL', None)
+    if not all([client_id, api_url, token]):
+        return None
+    
+    # --- Step 1: Fetch main game data including keyword IDs ---
+    headers = {'Client-ID': client_id, 'Authorization': f'Bearer {token}'}
+    
+    # Define the fields we want from IGDB. This is an APOCALYPSE query.
+    # I've added 'keywords' to the list. This will return an array of IDs.
+    fields = "fields name, cover.image_id, first_release_date, genres.name, keywords, involved_companies.developer, involved_companies.publisher, involved_companies.company.name, summary, storyline, total_rating, aggregated_rating_count, url;"
+    
+    if igdb_id:
+        body = f"{fields} where id = {igdb_id};"
+    elif title:
+        # Search for the most relevant game.
+        body = f'{fields} search "{title}"; limit 10;' # Fetch up to 10 results
+    else:
+        return []
+
+    print(f"[IGDB] API Request URL: {api_url}/games")
+    print(f"[IGDB] API Request Body: {body}")
+    req = urllib.request.Request(f"{api_url}/games", data=body.encode('utf-8'), headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            if resp.status != 200:
+                print(f"[IGDB] API returned non-200 status: {resp.status}")
+                return []
+            results = json.loads(resp.read().decode('utf-8'))
+            print(f"[IGDB] API returned {len(results)} game(s).")
+            
+            if not results:
+                return []
+            
+            # If we searched by ID, we only have one result, so fetch its keywords.
+            if igdb_id and len(results) == 1:
+                game_data = results[0]
+                # --- Step 2: If we have keyword IDs, fetch their names ---
+                keyword_ids = game_data.get('keywords')
+                if keyword_ids:
+                    print(f"[IGDB] Found {len(keyword_ids)} keyword IDs. Fetching names...")
+                    ids_str = ",".join(map(str, keyword_ids))
+                    keyword_body = f"fields name; where id = ({ids_str}); limit {len(keyword_ids)};"
+                    keyword_req = urllib.request.Request(f"{api_url}/keywords", data=keyword_body.encode('utf-8'), headers=headers)
+                    with urllib.request.urlopen(keyword_req, timeout=10) as kw_resp:
+                        if kw_resp.status == 200:
+                            keyword_results = json.loads(kw_resp.read().decode('utf-8'))
+                            # Attach the keyword names to the game data object for mapping
+                            game_data['keyword_names'] = [kw['name'] for kw in keyword_results]
+                            print(f"[IGDB] Fetched {len(game_data['keyword_names'])} keyword names.")
+                return [game_data] # Return as a list with one item
+
+            # If we searched by title, return all results for the user to pick from.
+            return results
+
+    except Exception as e:
+        print(f"[IGDB] EXCEPTION during API data fetch: {e}")
+        return None
+
+
+def _map_igdb_to_schema(igdb_game: Dict[str, Any]) -> Dict[str, Any]:
+    """Maps a raw IGDB game object to our local database schema."""
+    if not igdb_game:
+        return {}
+    
+    print("[IGDB] Mapping raw IGDB data to local schema...")
+    # Log the first few levels of the raw data for inspection
+    raw_preview = {k: v for k, v in igdb_game.items() if not isinstance(v, (list, dict))}
+    print(f"[IGDB] Raw data preview: {raw_preview}")
+    
+    # Extract developers and publishers
+    developers = [ic['company']['name'] for ic in igdb_game.get('involved_companies', []) if ic.get('developer')]
+    publishers = [ic['company']['name'] for ic in igdb_game.get('involved_companies', []) if ic.get('publisher')]
+
+    mapped = {
+        'name': igdb_game.get('name'),
+        'description': igdb_game.get('summary'),
+        'plot_synopsis': igdb_game.get('storyline'),
+        'igdb_id': igdb_game.get('id'),
+        'genre': ", ".join(g['name'] for g in igdb_game.get('genres', [])),
+        'developer': ", ".join(developers),
+        'publisher': ", ".join(publishers),
+        'tags': [kw.lower() for kw in igdb_game.get('keyword_names', [])] # Use keyword names for tags
+    }
+
+    if igdb_game.get('cover', {}).get('image_id'):
+        mapped['cover_image_url'] = f"https://images.igdb.com/igdb/image/upload/t_cover_big/{igdb_game['cover']['image_id']}.jpg"
+    
+    if igdb_game.get('first_release_date'):
+        from datetime import datetime
+        mapped['release_year'] = datetime.fromtimestamp(igdb_game['first_release_date']).year
+
+    print(f"[IGDB] Mapping complete. Result: {mapped}")
+    # Filter out any None values
+    return {k: v for k, v in mapped.items() if v is not None}
+
+
 def handle(req: Dict[str, Any]):
     parsed = req
     subpath = (parsed.get('subpath') or '').lstrip('/')
@@ -553,5 +700,46 @@ def handle(req: Dict[str, Any]):
         suggestions = _call_ai_suggest(title)
         # Return suggested search terms for the frontend to try against IGDB
         return {'matches': [], 'suggestions': suggestions}
+
+    if subpath.startswith('igdb_fetch') and method == 'POST':
+        print("\n--- [IGDB] Handling 'igdb_fetch' request ---")
+        body = parsed.get('json')
+        if not body:
+            print("[IGDB] ERROR: No JSON body found in request.")
+            return (400, {'error': 'JSON body is required'})
+        
+        title = body.get('title')
+        igdb_id = body.get('igdb_id')
+        print(f"[IGDB] Request params: title='{title}', igdb_id='{igdb_id}'")
+
+        if not title and not igdb_id:
+            print("[IGDB] ERROR: Both title and igdb_id are missing.")
+            return (400, {'error': 'title or igdb_id is required'})
+
+        token, err = _get_igdb_token()
+        if err:
+            print(f"[IGDB] ERROR: Failed to get token: {err}")
+            return (503, {'error': err})
+
+        igdb_results = _fetch_igdb_data(token, title=title, igdb_id=igdb_id)
+
+        # If searching by ID, we expect one result. Map it and return.
+        if igdb_id:
+            if not igdb_results:
+                return {'game_data': {}}
+            mapped_data = _map_igdb_to_schema(igdb_results[0])
+            return {'game_data': mapped_data}
+
+        # If searching by title, handle multiple results.
+        if len(igdb_results) == 0:
+            return {'game_data': {}}
+        elif len(igdb_results) == 1:
+            # Only one result, so we can fetch its keywords and map it directly.
+            full_game_data = _fetch_igdb_data(token, igdb_id=igdb_results[0]['id'])
+            mapped_data = _map_igdb_to_schema(full_game_data[0] if full_game_data else None)
+            return {'game_data': mapped_data}
+        else:
+            # Multiple results, return a list of choices for the user.
+            return {'game_choices': igdb_results}
 
     return (404, {'error': 'unknown import action'})

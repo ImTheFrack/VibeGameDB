@@ -79,6 +79,27 @@ export async function igdbSearch(title) {
 }
 
 /**
+ * Fetches enriched game data from IGDB via our backend.
+ * @param {string} title - The title of the game to search for.
+ * @param {number|null} igdbId - The IGDB ID if known.
+ * @returns {Promise<Object|null>}
+ */
+export async function fetchFromIgdb(title, igdbId = null) {
+  try {
+    const res = await fetch('/plugins/import_handler/igdb_fetch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, igdb_id: igdbId })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.json()).error}`);
+    return await res.json();
+  } catch (err) {
+    alert(`Error fetching from IGDB: ${err.message}`);
+    return null;
+  }
+}
+
+/**
  * Fetches autocomplete suggestions from the backend.
  * @param {string} query - The search query.
  * @returns {Promise<Object|null>} A promise that resolves to the suggestions object or null on error.

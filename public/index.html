@@ -173,6 +173,7 @@
                         <button type="button" class="btn" data-close>Cancel</button>
                     </div>
                     <div class="button-group">
+                        <button type="button" id="btn-pull-igdb" class="btn">Pull from IGDB</button>
                         <button type="button" class="btn btn-clone">Clone</button>
                         <button type="button" class="btn btn-delete">Delete</button>
                     </div>
@@ -319,6 +320,7 @@
                             <!-- JS will populate platforms -->
                         </select>
                     </div>
+                    <button id="bulk-btn-pull-igdb" class="btn" data-action="pull_igdb">Pull from IGDB</button>
                     <button id="bulk-btn-edit-fields" class="btn" data-action="edit_fields">Edit Game Fields...</button>
                     <button id="bulk-btn-delete" class="btn btn-danger" data-action="delete">Delete Selected Items</button>
                 </div>
@@ -552,6 +554,24 @@
         </div>
     </div>
 
+    <!-- IGDB Game Picker Modal -->
+    <div id="modal-igdb-picker" class="modal" aria-hidden="true">
+        <div class="modal-content">
+            <header class="modal-header">
+                <h2>Select a Game from IGDB</h2>
+                <button class="modal-close" data-close>&times;</button>
+            </header>
+            <div class="modal-body">
+                <p>Multiple matches found. Please select the correct game.</p>
+                <ul id="igdb-choices-list" class="igdb-choices-list">
+                    <!-- JS will populate choices here -->
+                </ul>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn" data-close>Cancel</button>
+            </div>
+        </div>
+    </div>
 
     <script type="module" src="/js/main.js"></script>
 </body>

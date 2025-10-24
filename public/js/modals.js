@@ -1,7 +1,7 @@
 'use strict';
 import { state, clearAllFilters } from './state.js';
 import { normalizeName } from './utils.js';
-import { fetchPlatforms as fetchPlatformsFromApi, fetchGamePlatforms as fetchGamePlatformsFromApi, fetchAutocomplete } from './api.js';
+import { fetchPlatforms as fetchPlatformsFromApi, fetchGamePlatforms as fetchGamePlatformsFromApi, fetchAutocomplete, fetchFromIgdb } from './api.js';
 import { renderAutocomplete } from './render.js';
 
 /**
@@ -487,6 +487,57 @@ export async function populateGamePlatformsList(gameId) {
 }
 
 /**
+ * Populates and shows the IGDB game picker modal.
+ * @param {Array<Object>} choices - The array of game choices from the IGDB API.
+ * @param {function(Object):void} onSelect - Callback function when a game is chosen.
+ */
+export function showIgdbPickerModal(choices, onSelect) {
+  const modal = document.getElementById('modal-igdb-picker');
+  const list = document.getElementById('igdb-choices-list');
+  if (!modal || !list) return;
+
+  list.innerHTML = ''; // Clear previous choices
+
+  choices.forEach(choice => {
+    const li = document.createElement('li');
+    li.className = 'igdb-choice-item';
+    li.dataset.igdbId = choice.id;
+
+    const year = choice.first_release_date ? new Date(choice.first_release_date * 1000).getFullYear() : 'N/A';
+    const summary = choice.summary ? choice.summary.substring(0, 150) + '...' : 'No summary available.';
+
+    li.innerHTML = `
+      <div class="igdb-choice-info">
+        <div class="igdb-choice-title">${choice.name} <span class="muted">(${year})</span></div>
+        <div class="igdb-choice-summary">${summary}</div>
+      </div>
+    `;
+    list.appendChild(li);
+  });
+
+  // Use a single delegated event listener
+  const clickHandler = async (e) => {
+    const item = e.target.closest('.igdb-choice-item');
+    if (item) {
+      const igdbId = item.dataset.igdbId;
+      closeModal(modal);
+      list.removeEventListener('click', clickHandler); // Clean up listener
+
+      // Fetch the full data for the selected ID
+      const result = await fetchFromIgdb(null, igdbId);
+      if (result && result.game_data) {
+        onSelect(result.game_data);
+      }
+    }
+  };
+
+  list.removeEventListener('click', clickHandler); // Ensure no duplicate listeners
+  list.addEventListener('click', clickHandler);
+
+  openModal(modal);
+}
+
+/**
  * Resets the game modal to its default state for adding or editing a single game.
  * This function cleans up any UI modifications left over from bulk edit mode.
  */
@@ -582,6 +633,7 @@ export async function showEditGameModal(gameId, doOpen = true, isBulkEdit = fals
   // Show clone/delete button group for "Edit" mode
   const actionButtons = formGame.querySelector('.btn-clone').parentElement;
   actionButtons.style.display = isBulkEdit ? 'none' : 'flex';
+  document.getElementById('btn-pull-igdb').style.display = isBulkEdit ? 'none' : 'inline-block';
   // Hide/show elements based on mode
   formGame.querySelector('.inline-checkboxes').style.display = 'flex';
   document.getElementById('bulk-edit-specific-fields').style.display = isBulkEdit ? 'block' : 'none';

@@ -1,9 +1,9 @@
 'use strict';
 import { state, clearAllFilters } from './state.js';
-import { fetchGames as fetchGamesFromApi, fetchPlatforms as fetchPlatformsFromApi, fetchAutocomplete, postBulkOperation } from './api.js';
+import { fetchGames as fetchGamesFromApi, fetchPlatforms as fetchPlatformsFromApi, fetchAutocomplete, postBulkOperation, fetchFromIgdb } from './api.js';
 import { renderGames, renderPlatforms, renderBulkActionsBar, renderAutocomplete } from './render.js';
 import { applyFilters, extractAllTags, updateActiveFiltersDisplay, updateTabCounts } from './filters.js';
-import { openModal, closeModal, populateFilterModal, populateAddToPlatformForm, showEditGameModal, showBulkEditGameModal, showEditPlatformModal, populateGamePlatformsList, clearAutocomplete, initAutocomplete, resetGameModalUI } from './modals.js';
+import { openModal, closeModal, populateFilterModal, populateAddToPlatformForm, showEditGameModal, showBulkEditGameModal, showEditPlatformModal, populateGamePlatformsList, clearAutocomplete, initAutocomplete, resetGameModalUI, showIgdbPickerModal } from './modals.js';
 import { initImportModal } from './modals.js';
 import { normalizeName } from './utils.js';
 
@@ -148,6 +148,7 @@ export function wireDomEvents() {
     formGame.dataset.gameId = '';
     // Hide clone/delete button group for "Add" mode
     formGame.querySelector('.btn-clone').parentElement.style.display = 'none';
+    document.getElementById('btn-pull-igdb').style.display = 'inline-block';
     document.getElementById('game-platforms-section').style.display = 'block';
 
     document.getElementById('link-game-section').style.display = 'none';
@@ -221,6 +222,47 @@ export function wireDomEvents() {
   // initialize import modal helpers
   try { initImportModal(); } catch (e) { console.warn('Import modal init failed', e); }
 
+  // --- IGDB Pull Button in Game Modal ---
+  document.getElementById('btn-pull-igdb').addEventListener('click', async (e) => {
+    e.preventDefault();
+    const title = formGame.querySelector('input[name="name"]').value;
+    const igdbId = formGame.querySelector('input[name="igdb_id"]').value;
+    if (!title && !igdbId) {
+      alert('Please enter a title or an IGDB ID to search.');
+      return;
+    }
+
+    const button = e.target;
+    const originalText = button.textContent;
+    button.textContent = 'Fetching...';
+    button.disabled = true;
+
+    const result = await fetchFromIgdb(title, igdbId);
+
+    const populateForm = (data) => {
+      Object.keys(data).forEach(key => {
+        const input = formGame.querySelector(`[name="${key}"]`);
+        if (input) input.value = Array.isArray(data[key]) ? data[key].join(', ') : data[key];
+      });
+    };
+
+    if (result) {
+      if (result.game_data) {
+        // Single, definitive result
+        populateForm(result.game_data);
+      } else if (result.game_choices && result.game_choices.length > 0) {
+        // Multiple results, show the picker modal
+        showIgdbPickerModal(result.game_choices, (selectedGameData) => {
+          populateForm(selectedGameData);
+        });
+      } else {
+        alert('No game found on IGDB with that title.');
+      }
+    }
+    button.textContent = originalText;
+    button.disabled = false;
+  });
+
   // Refresh data when import completes
   window.addEventListener('vgd:import_complete', async () => {
     await fetchPlatforms(); // This will now re-render the platform list
@@ -242,6 +284,7 @@ export function wireDomEvents() {
       // Hide clone/delete buttons after cloning
       formGame.querySelector('.btn-clone').style.display = 'none';
       formGame.querySelector('.btn-delete').style.display = 'none';
+      document.getElementById('btn-pull-igdb').style.display = 'inline-block';
       alert('Game data cloned. Modify and save to create a new entry.');
     }
 
@@ -1045,6 +1088,43 @@ export function wireDomEvents() {
       if (action === 'edit_fields') {
         closeModal(modalBulkEdit);
         await showBulkEditGameModal();
+        return;
+      }
+
+      if (action === 'pull_igdb') {
+        if (!confirm(`This will attempt to fetch data from IGDB for ${ids.length} game(s), potentially overwriting existing data. Do you want to proceed?`)) {
+          return;
+        }
+        closeModal(modalBulkEdit);
+        let processed = 0;
+        for (const gameId of ids) {
+          const game = state.allGames.find(g => String(g.id) === gameId);
+          if (!game || !game.name) continue;
+
+          // In bulk mode, we can't ask the user to choose, so we fetch by ID if available,
+          // otherwise we fetch by title and hope the first result is correct.
+          const result = await fetchFromIgdb(game.igdb_id ? null : game.name, game.igdb_id);
+
+          let dataToUpdate = null;
+          if (result && result.game_data) {
+            dataToUpdate = result.game_data;
+          } else if (result && result.game_choices && result.game_choices.length > 0) {
+            // Can't ask user, so fetch full data for the *first* choice
+            const firstChoiceId = result.game_choices[0].id;
+            const firstChoiceResult = await fetchFromIgdb(null, firstChoiceId);
+            if (firstChoiceResult && firstChoiceResult.game_data) {
+              dataToUpdate = firstChoiceResult.game_data;
+            }
+          }
+
+          if (dataToUpdate) {
+            const res = await fetch(`/plugins/database_handler/games/${gameId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dataToUpdate) });
+            if (!res.ok) console.error(`Failed to update game ${gameId}`);
+            processed++;
+          }
+        }
+        alert(`IGDB data pull complete. Processed ${processed} of ${ids.length} games.`);
+        await fetchGames(); // Refresh data
         return;
       }
 

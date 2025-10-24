@@ -26,6 +26,14 @@ AI_AGENTS = {
     }
 }
 
+# --- IGDB API Configuration ---
+# Credentials for authenticating with the Twitch/IGDB API.
+# You can generate these from the Twitch Developer Console.
+IGDB_CLIENT_ID = "epl48quhzq3fcvamrk27jngq0idutx"
+IGDB_CLIENT_SECRET = "iplgi5j3awi6hkl4nzq3yf2ywverah"
+IGDB_AUTH_URL = "https://id.twitch.tv/oauth2/token"
+IGDB_API_URL = "https://api.igdb.com/v4"
+
 
 # --- Database Configuration ---
 # This points to the SQLite file we will use later. Keeping it in config avoids
